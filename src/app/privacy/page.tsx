@@ -31,6 +31,7 @@ export default function PrivacyPage() {
           ) : (
             <p>The photograph is processed by AI models running on ECO&apos;s own server (person segmentation and face detection). It is <b>not</b> sent to any external AI company and is <b>never</b> used to train AI models.</p>
           )}
+          {config.hostingDisclosure && <p><b>Hosting:</b> {config.hostingDisclosure}</p>}
           <p>The AI removes the background, applies a uniform brightness/contrast correction and mild sharpening, crops to head-and-shoulders and places the official ECO logo behind you. It does not alter your face, skin tone, age, clothing or accessories.</p>
           <h3 className="font-bold">4. Retention and deletion</h3>
           <ul className="list-disc pl-5">

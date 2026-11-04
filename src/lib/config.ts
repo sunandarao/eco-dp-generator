@@ -49,6 +49,9 @@ export const config = {
   adminIpAllowlist: (process.env.ADMIN_IP_ALLOWLIST || "").split(",").map((s) => s.trim()).filter(Boolean),
 
   // Privacy notice
+  // Public address of the app (optional; used for origin checks behind proxies) and hosting disclosure for the notice
+  publicUrl: process.env.PUBLIC_URL || "",
+  hostingDisclosure: process.env.HOSTING_DISCLOSURE || "",
   noticeVersion: process.env.PRIVACY_NOTICE_VERSION || "2026-11-v1-DRAFT",
   privacyEmail: process.env.PRIVACY_CONTACT_EMAIL || "",
   grievanceOfficer: process.env.GRIEVANCE_OFFICER_NAME || "",

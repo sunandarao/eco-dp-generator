@@ -68,6 +68,9 @@ downloads behave best over HTTPS.
 
 ## Production deployment
 
+Step-by-step guides, including a **free** option (Hugging Face Spaces + Supabase), are in
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
 **Recommended: a Docker container in an India region** (for example AWS ECS/App Runner `ap-south-1`, Azure
 Central India, GCP `asia-south1`). Requirements: ≥2 vCPU, ≥2 GB RAM, HTTPS in front.
 

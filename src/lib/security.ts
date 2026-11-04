@@ -83,10 +83,16 @@ export async function getAdmin(): Promise<string | null> {
 /** Same-origin check for state-changing requests (CSRF defence in addition to SameSite cookies). */
 export async function sameOrigin() {
   const h = await headers();
+  // Browsers set Sec-Fetch-Site themselves (pages cannot forge it); this works behind any proxy.
+  const site = h.get("sec-fetch-site");
+  if (site === "same-origin") return true;
+  if (site === "cross-site" || site === "same-site") return false;
   const origin = h.get("origin");
-  if (!origin) return h.get("sec-fetch-site") !== "cross-site";
+  if (!origin) return true; // non-browser client: no ambient cookies are at risk
   try {
-    return new URL(origin).host === (h.get("x-forwarded-host") || h.get("host"));
+    const host = new URL(origin).host;
+    if (config.publicUrl && host === new URL(config.publicUrl).host) return true;
+    return host === (h.get("x-forwarded-host") || h.get("host"));
   } catch {
     return false;
   }
