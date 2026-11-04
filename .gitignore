@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+.data/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+next-env.d.ts
+# AI models are downloaded by `npm run models` (≈177 MB)
+models/*.onnx
+# The official logo is supplied by ECO and managed outside the repository if required
+# public/brand/eco-logo.png

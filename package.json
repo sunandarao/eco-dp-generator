@@ -1,0 +1,38 @@
+{
+  "name": "eco-dp-generator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ECO Professional DP Generator - privacy-by-design WhatsApp DP creator for ECO Mobility",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "models": "node scripts/fetch-models.mjs",
+    "hash-password": "node scripts/hash-password.mjs",
+    "test:pipeline": "tsx scripts/test-pipeline.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "next": "^15.5.29",
+    "onnxruntime-node": "^1.20.1",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^3.4.14",
+    "tsx": "^4.23.15",
+    "typescript": "^5.6.3"
+  },
+  "overrides": {
+    "postcss": "$postcss"
+  }
+}

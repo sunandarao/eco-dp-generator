@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html { -webkit-text-size-adjust: 100%; }
+body { background: #ffffff; color: #1a1a1a; }
+
+@layer components {
+  .btn {
+    @apply flex w-full min-h-[60px] items-center justify-center gap-3 rounded-2xl px-5 text-lg font-bold tracking-wide
+      transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-4
+      focus-visible:outline-offset-2 focus-visible:outline-eco/40;
+  }
+  .btn-primary { @apply btn bg-eco text-white shadow-lg shadow-eco/25 hover:bg-eco-dark; }
+  .btn-outline { @apply btn border-2 border-eco bg-white text-eco hover:bg-eco-soft; }
+  .btn-ghost { @apply btn min-h-[52px] text-base font-semibold text-ink-muted underline-offset-4 hover:underline; }
+  .card { @apply rounded-3xl border border-neutral-200 bg-white p-5; }
+  .field { @apply w-full min-h-[56px] rounded-xl border-2 border-neutral-300 bg-white px-4 text-lg focus:border-eco focus:outline-none; }
+}
+
+.progress-indeterminate { position: relative; overflow: hidden; }
+.progress-indeterminate::after {
+  content: ""; position: absolute; inset: 0; width: 40%;
+  background: #d80017; border-radius: 9999px;
+  animation: slide 1.4s ease-in-out infinite;
+}
+@keyframes slide { 0% { left: -40%; } 100% { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .progress-indeterminate::after { animation-duration: 4s; } }
