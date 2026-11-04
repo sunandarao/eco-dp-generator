@@ -21,10 +21,10 @@ export type GenerateResult = {
 
 /** "Regenerate" cycles through these composition variants. None of them alter the face or clothing. */
 const VARIANTS = [
-  { zoom: 3.2, faceY: 0.4, wm: "right" as const },
-  { zoom: 2.8, faceY: 0.41, wm: "left" as const },
-  { zoom: 3.6, faceY: 0.38, wm: "right" as const },
-  { zoom: 3.0, faceY: 0.4, wm: "left" as const },
+  { zoom: 3.2, faceY: 0.4 },
+  { zoom: 2.8, faceY: 0.41 },
+  { zoom: 3.6, faceY: 0.38 },
+  { zoom: 3.0, faceY: 0.4 },
 ];
 export const VARIANT_COUNT = VARIANTS.length;
 
@@ -120,48 +120,114 @@ export async function generateDP(input: Buffer, variantIndex = 0): Promise<Gener
     const warnings: string[] = [];
     if (fw < 140) warnings.push("low_resolution");
 
-    // 3. Head-and-shoulders square composition centred on the face
+    // 3–4. Head-and-shoulders square crop centred on the face, then AI person segmentation.
     const fcx = (main.x1 + main.x2) / 2, fcy = (main.y1 + main.y2) / 2;
-    let S = Math.min(v.zoom * fw, W, H);
-    if (S < 2.3 * fw) S = 2.3 * fw; // allow white padding rather than cropping the head
-    S = Math.round(S);
-    let left = Math.round(fcx - S / 2), top = Math.round(fcy - v.faceY * S);
-    if (S <= W) left = Math.min(Math.max(0, left), W - S);
-    if (S <= H) top = Math.min(Math.max(0, top), H - S);
-    const padL = Math.max(0, -left), padT = Math.max(0, -top), padR = Math.max(0, left + S - W), padB = Math.max(0, top + S - H);
-    const padded = (padL || padT || padR || padB)
-      ? await sharp(rgb, { raw: { width: W, height: H, channels: 3 } })
-        .extend({ left: padL, top: padT, right: padR, bottom: padB, background: "#ffffff" }).raw().toBuffer()
-      : rgb;
-    const crop = await sharp(padded, { raw: { width: W + padL + padR, height: H + padT + padB, channels: 3 } })
-      .extract({ left: left + padL, top: top + padT, width: S, height: S })
-      .resize(OUT, OUT, { kernel: "lanczos3" }).raw().toBuffer();
-    const k = OUT / S;
-    const face: Box = { x1: (main.x1 - left) * k, y1: (main.y1 - top) * k, x2: (main.x2 - left) * k, y2: (main.y2 - top) * k, score: main.score };
+    const frame = async (zoom: number, allowPad = false) => {
+      // 3. Head-and-shoulders square composition centred on the face.
+      //    allowPad: the photo is too tight to widen, so add white space above/beside (never below) the person.
+      let S = allowPad ? zoom * fw : Math.min(zoom * fw, W, H);
+      if (S < 2.3 * fw) S = 2.3 * fw; // allow white padding rather than cropping the head
+      S = Math.round(S);
+      let left = Math.round(fcx - S / 2), top = Math.round(fcy - v.faceY * S);
+      if (S <= W) left = Math.min(Math.max(0, left), W - S);
+      if (S <= H) top = Math.min(Math.max(0, top), H - S);
+      else top = H - S; // body continues off the bottom edge naturally; extra space goes above the head
+      const padL = Math.max(0, -left), padT = Math.max(0, -top), padR = Math.max(0, left + S - W), padB = Math.max(0, top + S - H);
+      const padded = (padL || padT || padR || padB)
+        ? await sharp(rgb, { raw: { width: W, height: H, channels: 3 } })
+          .extend({ left: padL, top: padT, right: padR, bottom: padB, background: "#ffffff" }).raw().toBuffer()
+        : rgb;
+      const crop = await sharp(padded, { raw: { width: W + padL + padR, height: H + padT + padB, channels: 3 } })
+        .extract({ left: left + padL, top: top + padT, width: S, height: S })
+        .resize(OUT, OUT, { kernel: "lanczos3" }).raw().toBuffer();
+      const k = OUT / S;
+      const face: Box = { x1: (main.x1 - left) * k, y1: (main.y1 - top) * k, x2: (main.x2 - left) * k, y2: (main.y2 - top) * k, score: main.score };
 
-    // 4. AI background removal (person matting)
-    let matte: Buffer;
-    if (config.aiProvider === "removebg") {
-      matte = await removeBgMatte(crop, OUT);
-    } else {
-      matte = await segmentPerson(crop, OUT);
-    }
-    keepComponentsTouching(matte, OUT, face);
-    // padded (non-photo) areas can never be "person"
-    for (let y = 0; y < OUT; y++) for (let x = 0; x < OUT; x++) {
-      const sx = x / k + left, sy = y / k + top;
-      if (sx < 0 || sy < 0 || sx >= W || sy >= H) matte[y * OUT + x] = 0;
-    }
-    // tighten matte edges
-    for (let i = 0; i < matte.length; i++) matte[i] = Math.max(0, Math.min(255, Math.round(((matte[i] - 18) / (235 - 18)) * 255)));
-    const smooth = await sharp(matte, { raw: { width: OUT, height: OUT, channels: 1 } }).blur(0.6).extractChannel(0).raw().toBuffer();
+      // 4. AI background removal (person matting) – run on the PHOTO area only. When white space was added
+      //    around a tight photo, segmenting the whole canvas would make the model treat the photo rectangle
+      //    itself as the subject.
+      const ix0 = Math.max(0, Math.ceil(-left * k)), iy0 = Math.max(0, Math.ceil(-top * k));
+      const ix1 = Math.min(OUT, Math.floor((W - left) * k)), iy1 = Math.min(OUT, Math.floor((H - top) * k));
+      const iw = ix1 - ix0, ih = iy1 - iy0;
+      const segment = (buf: Buffer, size: number) =>
+        config.aiProvider === "removebg" ? removeBgMatte(buf, size) : segmentPerson(buf, size);
+      let matte: Buffer;
+      if (iw >= OUT - 2 && ih >= OUT - 2) {
+        matte = await segment(crop, OUT);
+      } else {
+        const sq = Math.max(iw, ih);
+        const region = await sharp(crop, { raw: { width: OUT, height: OUT, channels: 3 } })
+          .extract({ left: ix0, top: iy0, width: iw, height: ih })
+          .extend({ right: sq - iw, bottom: sq - ih, extendWith: "copy" }).raw().toBuffer();
+        const m = await segment(region, sq);
+        matte = Buffer.alloc(OUT * OUT);
+        for (let y = 0; y < ih; y++) m.copy(matte, (iy0 + y) * OUT + ix0, y * sq, y * sq + iw);
+      }
+      keepComponentsTouching(matte, OUT, face);
+      // padded (non-photo) areas can never be "person"
+      for (let y = 0; y < OUT; y++) for (let x = 0; x < OUT; x++) {
+        const sx = x / k + left, sy = y / k + top;
+        if (sx < 0 || sy < 0 || sx >= W || sy >= H) matte[y * OUT + x] = 0;
+      }
+      // tighten matte edges
+      for (let i = 0; i < matte.length; i++) matte[i] = Math.max(0, Math.min(255, Math.round(((matte[i] - 18) / (235 - 18)) * 255)));
+      // where the photo's own edge falls inside the DP (white space added), fade the cut-off instead of a hard line
+      const FE = 36;
+      if (ix0 > 0 || iy0 > 0 || ix1 < OUT) {
+        for (let y = iy0; y < iy1; y++) for (let x = ix0; x < ix1; x++) {
+          let d = FE;
+          if (ix0 > 0) d = Math.min(d, x - ix0);
+          if (ix1 < OUT) d = Math.min(d, ix1 - 1 - x);
+          if (iy0 > 0) d = Math.min(d, y - iy0);
+          if (d < FE) matte[y * OUT + x] = Math.round(matte[y * OUT + x] * (d / FE));
+        }
+      }
+      const smooth = await sharp(matte, { raw: { width: OUT, height: OUT, channels: 1 } }).blur(0.6).extractChannel(0).raw().toBuffer();
 
-    let faceCover = 0, fn = 0;
-    for (let y = Math.round(face.y1); y < Math.round(face.y2); y++) for (let x = Math.round(face.x1); x < Math.round(face.x2); x++) {
-      if (x < 0 || y < 0 || x >= OUT || y >= OUT) continue;
-      faceCover += smooth[y * OUT + x]; fn++;
+      let faceCover = 0, fn = 0;
+      for (let y = Math.round(face.y1); y < Math.round(face.y2); y++) for (let x = Math.round(face.x1); x < Math.round(face.x2); x++) {
+        if (x < 0 || y < 0 || x >= OUT || y >= OUT) continue;
+        faceCover += smooth[y * OUT + x]; fn++;
+      }
+      if (!fn || faceCover / fn / 255 < 0.6) throw new PhotoRejected("person_unclear");
+      return { crop, smooth, face };
+    };
+
+    // Logo: always TOP-LEFT at one fixed spot that stays fully visible inside WhatsApp's round crop,
+    // with clear space from the head/ear. If the person is too close, frame the person slightly wider.
+    const LOGO = 170, GAP = 40;
+    const R = OUT / 2 - 14, LP = Math.ceil(OUT / 2 - R / Math.SQRT2); // ≈168 px from the top-left corner
+    const clearOf = (m: Buffer, x: number, y: number, w: number, h: number) => {
+      for (let yy = Math.max(0, y - GAP); yy < Math.min(OUT, y + h + GAP); yy += 2)
+        for (let xx = Math.max(0, x - GAP); xx < Math.min(OUT, x + w + GAP); xx += 2)
+          if (m[yy * OUT + xx] > 24) return false;
+      return true;
+    };
+    let wm = await loadWatermark(LOGO);
+    let f = await frame(v.zoom), logoNote = "top-left";
+    for (const widen of [1.2, 1.45, 1.75]) {
+      if (clearOf(f.smooth, LP, LP, wm.w, wm.h)) break;
+      f = await frame(v.zoom * widen);
+      logoNote = `top-left (framed ${Math.round((widen - 1) * 100)}% wider for logo space)`;
     }
-    if (!fn || faceCover / fn / 255 < 0.6) throw new PhotoRejected("person_unclear");
+    for (const widen of [1.45, 1.75]) {
+      if (clearOf(f.smooth, LP, LP, wm.w, wm.h)) break;
+      f = await frame(v.zoom * widen, true);
+      logoNote = `top-left (white space added for logo)`;
+    }
+    if (!clearOf(f.smooth, LP, LP, wm.w, wm.h)) {
+      // very tight photos: use a smaller logo at the same spot; the person is drawn on top, so the logo
+      // can never cover the face or body
+      for (const size of [150, 130]) {
+        const cand = await loadWatermark(size);
+        wm = cand;
+        if (clearOf(f.smooth, LP, LP, cand.w, cand.h)) break;
+      }
+      logoNote = `top-left (reduced to ${wm.w}px – tight photo)`;
+    }
+    const { crop, smooth, face } = f;
+    const pos = { x: LP, y: LP };
+    const wmName = logoNote;
 
     // 5. Identity-preserving enhancement: ONE global tone curve on luminance; colour ratios (skin tone) preserved.
     //    No face reshaping, no skin smoothing, no generative re-drawing.
@@ -196,29 +262,9 @@ export async function generateDP(input: Buffer, variantIndex = 0): Promise<Gener
       person[i * 4 + 3] = smooth[i];
     }
 
-    // 6. Watermark placement: behind the person, inside WhatsApp's circular crop, choosing the most visible spot.
-    const wm = await loadWatermark(200);
-    const R = OUT / 2 - 20, C = OUT / 2;
-    const inCircle = (x: number, y: number) => (x - C) ** 2 + (y - C) ** 2 <= R * R;
-    const visibility = (x: number, y: number) => {
-      let occ = 0, n = 0;
-      for (let yy = y; yy < y + wm.h; yy += 3) for (let xx = x; xx < x + wm.w; xx += 3) { occ += smooth[yy * OUT + xx]; n++; }
-      return 1 - occ / n / 255;
-    };
-    // Prefer upper area on the variant's side; the logo must stay clearly visible and inside the circular DP crop.
-    let chosen = { x: 0, y: 0, vis: -1, score: -Infinity };
-    for (let y = 40; y + wm.h < OUT - 40; y += 20) for (let x = 40; x + wm.w < OUT - 40; x += 20) {
-      if (!inCircle(x, y) || !inCircle(x + wm.w, y) || !inCircle(x, y + wm.h) || !inCircle(x + wm.w, y + wm.h)) continue;
-      const vis = visibility(x, y);
-      const sidePref = (v.wm === "right" ? x > C : x + wm.w < C) ? 0.03 : 0;
-      const score = Math.min(vis, 0.98) + sidePref - (y / OUT) * 0.04;
-      if (score > chosen.score) chosen = { x, y, vis, score };
-    }
-    const wmName = `${chosen.y < C ? "upper" : "lower"}-${chosen.x + wm.w / 2 < C ? "left" : "right"} (${Math.round(chosen.vis * 100)}% visible)`;
-
     const jpeg = await sharp({ create: { width: OUT, height: OUT, channels: 3, background: "#ffffff" } })
       .composite([
-        { input: wm.data, raw: { width: wm.w, height: wm.h, channels: 4 }, left: chosen.x, top: chosen.y },
+        { input: wm.data, raw: { width: wm.w, height: wm.h, channels: 4 }, left: pos.x, top: pos.y },
         { input: person, raw: { width: OUT, height: OUT, channels: 4 }, left: 0, top: 0 },
       ])
       .jpeg({ quality: 92, mozjpeg: true, chromaSubsampling: "4:4:4" })
