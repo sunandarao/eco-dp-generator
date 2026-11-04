@@ -64,12 +64,23 @@ async function sharpness(rgb: Buffer, w: number, h: number, f: Box) {
   return s2 / n - (s / n) ** 2; // variance of Laplacian
 }
 
-async function loadWatermark(width: number) {
+// The official logo can be very large (e.g. 7500 px); scale it once and reuse it for every DP.
+const wmCache = new Map<string, Promise<{ data: Buffer; w: number; h: number }>>();
+function loadWatermark(width: number) {
   const p = fileExists(config.watermarkLogoPath) ? config.watermarkLogoPath : config.logoPath;
-  // The official logo is only scaled proportionally – never redrawn, recoloured or distorted.
-  const { data, info } = await sharp(p).resize({ width, withoutEnlargement: false }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  for (let i = 3; i < data.length; i += 4) data[i] = Math.round(data[i] * config.watermarkOpacity);
-  return { data, w: info.width, h: info.height };
+  const key = `${p}:${width}:${config.watermarkOpacity}`;
+  let hit = wmCache.get(key);
+  if (!hit) {
+    hit = (async () => {
+      // The official logo is only scaled proportionally – never redrawn, recoloured or distorted.
+      const { data, info } = await sharp(p, { limitInputPixels: 200_000_000 }).resize({ width }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      for (let i = 3; i < data.length; i += 4) data[i] = Math.round(data[i] * config.watermarkOpacity);
+      return { data, w: info.width, h: info.height };
+    })();
+    hit.catch(() => wmCache.delete(key));
+    wmCache.set(key, hit);
+  }
+  return hit;
 }
 
 export async function generateDP(input: Buffer, variantIndex = 0): Promise<GenerateResult> {
