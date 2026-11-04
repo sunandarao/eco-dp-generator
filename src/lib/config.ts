@@ -20,7 +20,8 @@ export const config = {
   logoPath: process.env.ECO_LOGO_PATH || path.join(root, "public/brand/eco-logo.png"),
   // Optional transparent-background watermark variant supplied by ECO brand team.
   watermarkLogoPath: process.env.ECO_WATERMARK_LOGO_PATH || path.join(root, "public/brand/eco-logo-watermark.png"),
-  watermarkOpacity: Math.min(0.35, Math.max(0.04, Number(process.env.WATERMARK_OPACITY || "0.13"))),
+  // 1 = the official logo exactly as supplied (original ECO red). Lower values fade it.
+  watermarkOpacity: Math.min(1, Math.max(0.04, Number(process.env.WATERMARK_OPACITY || "1"))),
 
   // AI
   modelsDir: process.env.MODELS_DIR || path.join(root, "models"),

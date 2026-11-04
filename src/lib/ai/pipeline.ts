@@ -74,7 +74,7 @@ function loadWatermark(width: number) {
     hit = (async () => {
       // The official logo is only scaled proportionally – never redrawn, recoloured or distorted.
       const { data, info } = await sharp(p, { limitInputPixels: 200_000_000 }).resize({ width }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-      for (let i = 3; i < data.length; i += 4) data[i] = Math.round(data[i] * config.watermarkOpacity);
+      if (config.watermarkOpacity < 1) for (let i = 3; i < data.length; i += 4) data[i] = Math.round(data[i] * config.watermarkOpacity);
       return { data, w: info.width, h: info.height };
     })();
     hit.catch(() => wmCache.delete(key));
