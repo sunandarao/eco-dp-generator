@@ -122,14 +122,14 @@ export async function generateDP(input: Buffer, variantIndex = 0): Promise<Gener
 
     // 3–4. Head-and-shoulders square crop centred on the face, then AI person segmentation.
     const fcx = (main.x1 + main.x2) / 2, fcy = (main.y1 + main.y2) / 2;
-    const frame = async (zoom: number, allowPad = false) => {
+    const frame = async (zoom: number, allowPad = false, faceX = 0.5) => {
       // 3. Head-and-shoulders square composition centred on the face.
       //    allowPad: the photo is too tight to widen, so add white space above/beside (never below) the person.
       let S = allowPad ? zoom * fw : Math.min(zoom * fw, W, H);
       if (S < 2.3 * fw) S = 2.3 * fw; // allow white padding rather than cropping the head
       S = Math.round(S);
-      let left = Math.round(fcx - S / 2), top = Math.round(fcy - v.faceY * S);
-      if (S <= W) left = Math.min(Math.max(0, left), W - S);
+      let left = Math.round(fcx - faceX * S), top = Math.round(fcy - v.faceY * S);
+      if (S <= W && !allowPad) left = Math.min(Math.max(0, left), W - S);
       if (S <= H) top = Math.min(Math.max(0, top), H - S);
       else top = H - S; // body continues off the bottom edge naturally; extra space goes above the head
       const padL = Math.max(0, -left), padT = Math.max(0, -top), padR = Math.max(0, left + S - W), padB = Math.max(0, top + S - H);
@@ -193,10 +193,10 @@ export async function generateDP(input: Buffer, variantIndex = 0): Promise<Gener
       return { crop, smooth, face };
     };
 
-    // Logo: always TOP-LEFT at one fixed spot that stays fully visible inside WhatsApp's round crop,
+    // Logo: always TOP-RIGHT of the image (the person's left side) at one fixed spot that stays fully visible inside WhatsApp's round crop,
     // with clear space from the head/ear. If the person is too close, frame the person slightly wider.
     const LOGO = 170, GAP = 40;
-    const R = OUT / 2 - 14, LP = Math.ceil(OUT / 2 - R / Math.SQRT2); // ≈168 px from the top-left corner
+    const R = OUT / 2 - 14, LP = Math.ceil(OUT / 2 - R / Math.SQRT2); // ≈168 px in from the top-right corner
     const clearOf = (m: Buffer, x: number, y: number, w: number, h: number) => {
       for (let yy = Math.max(0, y - GAP); yy < Math.min(OUT, y + h + GAP); yy += 2)
         for (let xx = Math.max(0, x - GAP); xx < Math.min(OUT, x + w + GAP); xx += 2)
@@ -204,29 +204,32 @@ export async function generateDP(input: Buffer, variantIndex = 0): Promise<Gener
       return true;
     };
     let wm = await loadWatermark(LOGO);
-    let f = await frame(v.zoom), logoNote = "top-left";
-    for (const widen of [1.2, 1.45, 1.75]) {
-      if (clearOf(f.smooth, LP, LP, wm.w, wm.h)) break;
-      f = await frame(v.zoom * widen);
-      logoNote = `top-left (framed ${Math.round((widen - 1) * 100)}% wider for logo space)`;
+    // Standard layout (approved by ECO): head-and-shoulders, person slightly left of centre, logo top-right at
+    // head height with clear space. White space may be added around tight photos so every DP looks alike.
+    // If the head still comes too close to the logo, frame a little wider.
+    const attempts = [
+      { widen: 1.3, fx: 0.42 },
+      { widen: 1.5, fx: 0.41 },
+      { widen: 1.7, fx: 0.40 },
+    ];
+    let f = await frame(v.zoom * attempts[0].widen, true, attempts[0].fx), logoNote = "top-right";
+    for (const at of attempts.slice(1)) {
+      if (clearOf(f.smooth, OUT - LP - wm.w, LP, wm.w, wm.h)) break;
+      f = await frame(v.zoom * at.widen, true, at.fx);
+      logoNote = `top-right (framed ${Math.round((at.widen / attempts[0].widen - 1) * 100)}% wider)`;
     }
-    for (const widen of [1.45, 1.75]) {
-      if (clearOf(f.smooth, LP, LP, wm.w, wm.h)) break;
-      f = await frame(v.zoom * widen, true);
-      logoNote = `top-left (white space added for logo)`;
-    }
-    if (!clearOf(f.smooth, LP, LP, wm.w, wm.h)) {
+    if (!clearOf(f.smooth, OUT - LP - wm.w, LP, wm.w, wm.h)) {
       // very tight photos: use a smaller logo at the same spot; the person is drawn on top, so the logo
       // can never cover the face or body
       for (const size of [150, 130]) {
         const cand = await loadWatermark(size);
         wm = cand;
-        if (clearOf(f.smooth, LP, LP, cand.w, cand.h)) break;
+        if (clearOf(f.smooth, OUT - LP - cand.w, LP, cand.w, cand.h)) break;
       }
-      logoNote = `top-left (reduced to ${wm.w}px – tight photo)`;
+      logoNote = `top-right (reduced to ${wm.w}px – tight photo)`;
     }
     const { crop, smooth, face } = f;
-    const pos = { x: LP, y: LP };
+    const pos = { x: OUT - LP - wm.w, y: LP };
     const wmName = logoNote;
 
     // 5. Identity-preserving enhancement: ONE global tone curve on luminance; colour ratios (skin tone) preserved.
