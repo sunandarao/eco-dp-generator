@@ -11,7 +11,7 @@ import { FaceDetector, FilesetResolver, ImageSegmenter } from "@mediapipe/tasks-
 export const OUT = 1080;
 export type RejectCode =
   | "invalid_image" | "too_small" | "no_face" | "multiple_people" | "face_too_small"
-  | "too_dark" | "too_bright" | "too_blurry" | "person_unclear";
+  | "too_dark" | "too_bright" | "too_blurry" | "person_unclear" | "too_close";
 export class PhotoRejected extends Error {
   constructor(public code: RejectCode) { super(code); }
 }
@@ -196,6 +196,8 @@ export async function generateOnDevice(photo: Blob, variantIndex = 0): Promise<D
   if (dets.filter((d) => area(d) >= 0.2 * area(main)).length > 1) throw new PhotoRejected("multiple_people");
   const fw = main.x2 - main.x1, fh = main.y2 - main.y1;
   if (fw < 60 || fh < 60) throw new PhotoRejected("face_too_small");
+  // Face fills most of the photo's width: a head-and-shoulders DP can't be made without cutting the sides.
+  if (W < 1.7 * fw) throw new PhotoRejected("too_close");
 
   let sum = 0, n = 0;
   for (let y = Math.round(main.y1); y < Math.round(main.y2); y++) for (let x = Math.round(main.x1); x < Math.round(main.x2); x++) {
@@ -224,10 +226,13 @@ export async function generateOnDevice(photo: Blob, variantIndex = 0): Promise<D
   const fcx = (main.x1 + main.x2) / 2, fcy = (main.y1 + main.y2) / 2;
   const frame = (zoom: number, fx: number, faceY: number, noTopPad = false) => {
     let S = Math.round(Math.max(zoom * fw, 2.3 * fw));
-    // The photo always fills the full WIDTH (no cut-off shoulders at the sides), unless it is extremely narrow.
-    if (S > W) S = Math.max(Math.round(2.3 * fw), W);
+    // The photo (nearly) fills the full WIDTH: at most ~8% white space at each side, so shoulders are not
+    // visibly cut off (real-phone feedback). Narrow photos get centred on the photo, not the face.
+    const MAX_S = Math.round(W * 1.18);
+    if (S > MAX_S) S = MAX_S;
     let left = Math.round(fcx - fx * S);
     if (S <= W) left = Math.min(Math.max(0, left), W - S);
+    else left = Math.round(Math.min(Math.max(left, W - S), 0)); // keep the padding within ±(S-W) and split it
     // Never white space BELOW (the body runs off the bottom edge); white space may be added ABOVE the head.
     let top = Math.round(fcy - faceY * S);
     if (noTopPad) top = Math.max(0, top); // the photo cuts the hair: keep its top edge at the top of the DP
@@ -294,18 +299,23 @@ export async function generateOnDevice(photo: Blob, variantIndex = 0): Promise<D
 
   // Logo top-right (the person's left), fixed spot inside WhatsApp's round crop, clear of the head.
   const R = OUT / 2 - 14, LP = Math.ceil(OUT / 2 - R / Math.SQRT2), GAP = 40;
-  const clearOf = (m: Uint8Array, x: number, y: number, w: number, h: number) => {
-    for (let yy = Math.max(0, y - GAP); yy < Math.min(OUT, y + h + GAP); yy += 2)
-      for (let xx = Math.max(0, x - GAP); xx < Math.min(OUT, x + w + GAP); xx += 2)
+  const clearOf = (m: Uint8Array, x: number, y: number, w: number, h: number, gap = GAP) => {
+    for (let yy = Math.max(0, y - gap); yy < Math.min(OUT, y + h + gap); yy += 2)
+      for (let xx = Math.max(0, x - gap); xx < Math.min(OUT, x + w + gap); xx += 2)
         if (m[yy * OUT + xx] > 24) return false;
     return true;
   };
   let logo = await logoAt(170);
-  const logoClear = (fr: { matte: Uint8Array }, lg: HTMLCanvasElement) => clearOf(fr.matte, OUT - LP - lg.width, LP, lg.width, lg.height);
-  // Attempts, least change first: standard layout → a little wider → person moved down (white above the head).
+  const ly = LP; // fixed spot inside WhatsApp's round crop (a corner logo would be hidden by the circle)
+  const lx = (lg: HTMLCanvasElement) => OUT - LP - lg.width;
+  const logoClear = (fr: { matte: Uint8Array }, lg: HTMLCanvasElement) => clearOf(fr.matte, lx(lg), ly, lg.width, lg.height);
+  // the shoulders must stay in the picture (no "floating head")
+  const shouldersOk = (fr: { face: Box }) => fr.face.y2 <= 0.8 * OUT;
+
+  // Attempts, least change first: standard layout → a little wider → person moved down a little (white above).
   const attempts = [
     { z: 1.3, fx: 0.42, dy: 0 }, { z: 1.5, fx: 0.41, dy: 0 },
-    { z: 1.5, fx: 0.41, dy: 0.06 }, { z: 1.5, fx: 0.41, dy: 0.12 }, { z: 1.5, fx: 0.41, dy: 0.18 },
+    { z: 1.5, fx: 0.41, dy: 0.05 }, { z: 1.5, fx: 0.41, dy: 0.1 }, { z: 1.5, fx: 0.41, dy: 0.15 },
   ];
   let f = frame(v.zoom * attempts[0].z, attempts[0].fx, v.faceY);
   // another sizeable person who wasn't detected as a face (e.g. turned away)
@@ -313,22 +323,23 @@ export async function generateOnDevice(photo: Blob, variantIndex = 0): Promise<D
   if (f.topCut) {
     // The original photo cuts through the top of the head: no white space above (it would show a flat head).
     f = frame(v.zoom * attempts[0].z, attempts[0].fx, v.faceY, true);
-    if (!logoClear(f, logo)) { const w = frame(v.zoom * 1.5, 0.41, v.faceY, true); if (logoClear(w, logo)) f = w; }
   } else if (!logoClear(f, logo)) {
     for (const at of attempts.slice(1)) {
       const c = frame(v.zoom * at.z, at.fx, v.faceY + at.dy);
-      if (c.topCut) continue;
+      if (c.topCut || !shouldersOk(c)) break;   // moving further down would cut the head or lose the shoulders
       f = c;
       if (logoClear(c, logo)) break;
     }
   }
   if (!logoClear(f, logo)) {
-    warnings.push("too_close");
-    // very tight photo: smaller logo at the same spot; the person is drawn on top, so it can never cover the face
+    // slightly smaller logo at the same spot
     for (const size of [150, 130]) {
-      logo = await logoAt(size);
-      if (logoClear(f, logo)) break;
+      const cand = await logoAt(size);
+      logo = cand;
+      if (logoClear(f, cand)) break;
     }
+    // The logo must never touch the head: keep at least a small gap, otherwise ask for a retake.
+    if (!clearOf(f.matte, lx(logo), ly, logo.width, logo.height, 14)) throw new PhotoRejected("too_close");
   }
 
   // 5. Identity-preserving enhancement: one global tone curve, colour ratios (skin tone) preserved.
@@ -376,7 +387,7 @@ export async function generateOnDevice(photo: Blob, variantIndex = 0): Promise<D
   // 6. Compose: white → official logo → person on top (logo can never cover the face or body)
   const final = canvas(OUT, OUT);
   final.ctx.fillStyle = "#fff"; final.ctx.fillRect(0, 0, OUT, OUT);
-  final.ctx.drawImage(logo, OUT - LP - logo.width, LP);
+  final.ctx.drawImage(logo, lx(logo), ly);
   final.ctx.drawImage(person.c, 0, 0);
   const blob = await new Promise<Blob | null>((r) => final.c.toBlob(r, "image/jpeg", 0.92));
   if (!blob) throw new Error("encode_failed");

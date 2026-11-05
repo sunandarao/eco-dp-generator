@@ -90,6 +90,7 @@ const en = {
     not_configured: "This service is not set up yet. Please contact your ECO administrator.",
     processing_failed: "Something went wrong. Please try again.",
     network: "Network problem. Please check your internet and try again.",
+    too_close: "This photo is taken too close. Please hold the phone a little farther away (or ask a colleague to take it) so your head and shoulders fit, with some space above your head.",
   } as Record<string, string>,
   warnings: {
     low_resolution: "Tip: your photo is low resolution, so the DP may look soft. A clearer photo will give a sharper result.",

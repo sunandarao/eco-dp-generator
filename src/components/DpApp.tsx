@@ -206,7 +206,7 @@ export default function DpApp() {
   }
 
   const canShare = typeof navigator !== "undefined" && !!navigator.canShare;
-  const errText = error && error !== "staff" ? t.errors[error] || t.errors.processing_failed : null;
+  const errText = error && error !== "staff" ? t.errors[error] || t.warnings[error] || t.errors.processing_failed : null;
 
   return (
     <div ref={topRef} className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-10">
