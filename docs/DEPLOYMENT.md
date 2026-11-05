@@ -1,75 +1,82 @@
 # Deployment guide
 
-## Option A – Free: Hugging Face Spaces + Supabase (recommended for a pilot)
+## Recommended: Google Cloud Run (Mumbai) + Supabase (Mumbai)
 
-Cost: **₹0**. No credit card. Hugging Face's free CPU Space has 2 vCPU and 16 GB RAM, which is plenty for the AI model.
+**Cost:** ₹0 for a campaign of this size (about 900 users and ~2,700 DPs use under 20% of Cloud Run's free
+monthly allowance). Google needs a card to open the account; set the budget alert in step 8.
 
-Things to know before choosing it:
-- Hugging Face, Inc. hosts the app on servers in the **USA**. Photos are processed there in memory and never
-  stored, but Hugging Face is still a hosting processor. ECO IT/Legal must approve it, and the privacy notice
-  must name it (set `HOSTING_DISCLOSURE`, step 4).
-- The Space **must be Public** so employees can open it. Your code is visible (it's already public on GitHub);
-  secrets stay hidden.
-- A free Space **sleeps after 48 hours without visitors** and takes about 1–2 minutes to wake. The daily cron
-  call in step 6 keeps it awake.
-- Share the direct link `https://<owner>-<space>.hf.space`, not the huggingface.co page (the app refuses to be
-  shown inside another site's frame, for security).
+**Data location:** India (`asia-south1` Mumbai for the app, `ap-south-1` Mumbai for the database).
 
-### 1. Add the official logo
-GitHub repo → `public/brand` → **Add file → Upload files** → upload the logo as `eco-logo.png` → Commit.
+### 1. Database (Supabase)
+1. supabase.com → New organization (Free) → New project, region **Mumbai**.
+2. SQL Editor → paste `supabase/schema.sql` → Run → "Success. No rows returned".
+3. Save the **Project URL** and the **secret / service_role key**.
 
-### 2. Database (Supabase free tier)
-1. supabase.com → **New project** → region **South Asia (Mumbai)**.
-2. **SQL Editor** → paste all of `supabase/schema.sql` → **Run**.
-3. **Project Settings → API** → copy the **Project URL** and the **service_role** key.
+### 2. Google Cloud account
+1. Go to console.cloud.google.com and sign in with a Google account.
+2. Accept the terms. Start the free trial or set up billing with a card (needed even for free usage).
+3. Create a project named `eco-dp`.
 
-The free tier pauses a project after about a week with no database activity. The daily cron call (step 6)
-touches the database and prevents that.
+### 3. Deploy from GitHub
+1. Console search bar → **Cloud Run** → **Deploy container** → **Service**.
+2. Choose **Continuously deploy from a repository (source or function)** → **Set up with Cloud Build**.
+3. Provider **GitHub** → authenticate → repository `sunandarao/eco-dp-generator` → **Next**.
+4. Branch `^main$`, build type **Dockerfile**, path `/Dockerfile` → **Save**.
+5. Service name `eco-dp`. Region **asia-south1 (Mumbai)**.
+6. Authentication: **Allow public access** (unauthenticated invocations).
+7. Billing: **Request-based**. Minimum instances `0`. Maximum instances `5`.
+8. **Container(s), Volumes, Networking, Security** → **Settings** tab:
+   - Memory **2 GiB**, CPU **2**, Request timeout **120** seconds
+   - Maximum concurrent requests per instance **8**
+   - Startup CPU boost **on**
+9. **Variables & Secrets** tab → add the environment variables (next section).
+10. Click **Create**. The first build takes about 10 minutes. Afterwards every push to `main` redeploys automatically.
 
-### 3. Create the Space
-1. huggingface.co → sign up → **New Space**.
-2. Name: e.g. `eco-dp`. SDK: **Docker** (Blank template). Hardware: **CPU basic – free**. Visibility: **Public**.
-3. **Settings → Access Tokens** (your profile) → **New token** → type **Write** → copy it.
-
-### 4. Space secrets (Space → Settings → Variables and secrets → New secret)
+### 4. Environment variables
 
 | Name | Value |
 |---|---|
-| `SUPABASE_URL` | from step 2 |
-| `SUPABASE_SERVICE_ROLE_KEY` | from step 2 |
+| `SUPABASE_URL` | from step 1 |
+| `SUPABASE_SERVICE_ROLE_KEY` | from step 1 |
 | `ADMIN_USERNAME` | e.g. `ecoadmin` |
 | `ADMIN_PASSWORD_HASH` / `ADMIN_SESSION_SECRET` | output of `npm run hash-password -- "<strong password>"` |
 | `CRON_SECRET` | any long random text |
 | `PRIVACY_CONTACT_EMAIL`, `GRIEVANCE_OFFICER_NAME` | ECO privacy contact |
-| `HOSTING_DISCLOSURE` | `Hugging Face, Inc. (servers in the USA) hosts this application for ECO.` |
-| `PUBLIC_URL` | `https://<owner>-<space>.hf.space` |
+| `HOSTING_DISCLOSURE` | `Google Cloud (Mumbai, India) hosts this application for ECO.` |
 | `BRANCHES` | your branch list, comma-separated |
+| `MAX_CONCURRENT_JOBS` | `2` |
 
-### 5. Connect GitHub → Space (automatic deploys)
-GitHub repo → **Settings → Secrets and variables → Actions**:
-- **Secrets** tab → New secret `HF_TOKEN` = the write token from step 3.
-- **Variables** tab → New variable `HF_SPACE` = `<hf-username>/eco-dp`.
+For stronger protection you can store the two keys in **Secret Manager** and reference them here instead.
 
-Then **Actions → Deploy to Hugging Face Space → Run workflow**. From now on, every push to `main` redeploys
-automatically. Watch the build in the Space's **Logs** tab; the first build takes about 5–10 minutes.
+### 5. Open it
+The service page shows a URL like `https://eco-dp-xxxxxxxx.asia-south1.run.app`. Open `/admin`, sign in, and
+check that **System configuration** is all ✓. Then make a DP on an Android phone.
+To use a custom domain such as `dp.ecomobility.com`, see Cloud Run → **Manage custom domains**.
 
-### 6. Daily deletion job (cron-job.org, free)
-Create a daily job: URL `https://<owner>-<space>.hf.space/api/cron/retention`, method GET, header
-`Authorization: Bearer <CRON_SECRET>`.
+### 6. Daily deletion job
+Cloud Scheduler (3 jobs are free) → **Create job**:
+- Frequency `0 2 * * *`, timezone Asia/Kolkata
+- Target **HTTP**, URL `https://<service-url>/api/cron/retention`, method GET
+- Header `Authorization: Bearer <CRON_SECRET>`
 
-### 7. Check
-Open `https://<owner>-<space>.hf.space/admin`, sign in, and confirm **System configuration** shows ✓ for
-everything. Then make a DP on an Android phone and see it appear on the dashboard.
+### 7. Rollout tips
+- Each instance processes 2 DPs at a time and up to 5 instances run, so about 10 DPs are processed at once.
+  The rest wait a few seconds. Sharing the link branch by branch avoids queues.
+- After a quiet period the first visitor waits about 10–20 s while an instance starts.
 
-## Option B – Paid, India region (recommended for full roll-out)
+### 8. Budget alert (recommended)
+Billing → **Budgets & alerts** → Create budget → amount ₹100 → alerts at 50%, 90%, 100% → email.
 
-Run the same Docker image on AWS App Runner / ECS (`ap-south-1` Mumbai), Azure (Central India) or Google Cloud
-Run (`asia-south1`) with ≥2 vCPU / 2 GB RAM. About USD 30–80 a month. Same environment variables as above.
+## Other options
 
-## Why not Vercel?
+| Option | Cost | Notes |
+|---|---|---|
+| Hugging Face Spaces (Docker) | about USD 9 / month (PRO) | Free plan no longer runs Docker apps. Servers in the USA. |
+| Render (Standard 2 GB) | about USD 25 / month | Singapore region. |
+| Any VM or container host | varies | Run the Docker image with ≥2 GB RAM. |
 
-- Vercel's free **Hobby plan is for personal, non-commercial use only**, so it can't be used for an ECO campaign;
-  Pro costs about USD 20 a month per member.
-- The on-server AI (onnxruntime + a 176 MB model) exceeds Vercel's 250 MB function size limit. Making it fit
-  would need either downloading the model on every cold start, or moving the AI into the phone's browser
-  (smaller, lower-quality model, slower on low-end phones).
+**Memory:** the app peaks at about 1.4 GB while generating a DP, so free tiers with 512 MB (Render Free,
+Koyeb Free and similar) cannot run it.
+
+**Vercel:** the free Hobby plan is for non-commercial use only, and the AI runtime plus the 176 MB model exceeds
+Vercel's 250 MB function limit.

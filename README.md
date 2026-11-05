@@ -68,7 +68,7 @@ downloads behave best over HTTPS.
 
 ## Production deployment
 
-Step-by-step guides, including a **free** option (Hugging Face Spaces + Supabase), are in
+Step-by-step guide for the recommended **free** setup (Google Cloud Run + Supabase, both in Mumbai) is in
 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 **Recommended: a Docker container in an India region** (for example AWS ECS/App Runner `ap-south-1`, Azure

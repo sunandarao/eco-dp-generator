@@ -3,6 +3,7 @@ import { config, fileExists } from "../config";
 import { detectFaces, type Box } from "./faces";
 import { segmentPerson, keepComponentsTouching } from "./segment";
 import { removeBgMatte } from "./providers";
+import { segSession, faceSession } from "./models";
 
 export const OUT = 1080;
 
@@ -81,6 +82,12 @@ function loadWatermark(width: number) {
     wmCache.set(key, hit);
   }
   return hit;
+}
+
+/** Load the AI models and the scaled logo once at server start, so the first visitor isn't kept waiting. */
+export async function warmup() {
+  await Promise.all([segSession(), faceSession()]);
+  if (fileExists(config.logoPath)) await loadWatermark(170);
 }
 
 export async function generateDP(input: Buffer, variantIndex = 0): Promise<GenerateResult> {

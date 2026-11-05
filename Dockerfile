@@ -1,10 +1,13 @@
 # ECO Professional DP Generator – production image
 # Build:  docker build -t eco-dp .
-# Run:    docker run -p 3000:3000 --env-file .env.production -v /secure/brand:/app/public/brand:ro eco-dp
+# Run:    docker run -p 3000:3000 --env-file .env.production eco-dp
+# Google Cloud Run builds this file directly from GitHub (see docs/DEPLOYMENT.md).
 
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
+# CPU-only: don't download the ~700 MB CUDA (GPU) add-on during install
+ENV ONNXRUNTIME_NODE_INSTALL_CUDA=skip
 RUN npm ci
 
 FROM node:22-bookworm-slim AS build
