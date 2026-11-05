@@ -197,7 +197,10 @@ export async function generateOnDevice(photo: Blob, variantIndex = 0): Promise<D
   const fw = main.x2 - main.x1, fh = main.y2 - main.y1;
   if (fw < 60 || fh < 60) throw new PhotoRejected("face_too_small");
   // Face fills most of the photo's width: a head-and-shoulders DP can't be made without cutting the sides.
-  if (W < 1.7 * fw) throw new PhotoRejected("too_close");
+  // A head-and-shoulders DP needs about 2.45 face-widths of picture (hair + face + neck/shoulders).
+  // If the photo can't give that with only a slim side margin, it was taken too close: ask for a retake.
+  const MIN_FRAME = 2.45;
+  if (W * 1.18 < MIN_FRAME * fw) throw new PhotoRejected("too_close");
 
   let sum = 0, n = 0;
   for (let y = Math.round(main.y1); y < Math.round(main.y2); y++) for (let x = Math.round(main.x1); x < Math.round(main.x2); x++) {
@@ -225,7 +228,7 @@ export async function generateOnDevice(photo: Blob, variantIndex = 0): Promise<D
   // 3–4. Frame (head-and-shoulders) and segment the person
   const fcx = (main.x1 + main.x2) / 2, fcy = (main.y1 + main.y2) / 2;
   const frame = (zoom: number, fx: number, faceY: number, noTopPad = false) => {
-    let S = Math.round(Math.max(zoom * fw, 2.3 * fw));
+    let S = Math.round(Math.max(zoom * fw, MIN_FRAME * fw));
     // The photo (nearly) fills the full WIDTH: at most ~8% white space at each side, so shoulders are not
     // visibly cut off (real-phone feedback). Narrow photos get centred on the photo, not the face.
     const MAX_S = Math.round(W * 1.18);
@@ -236,6 +239,9 @@ export async function generateOnDevice(photo: Blob, variantIndex = 0): Promise<D
     // Never white space BELOW (the body runs off the bottom edge); white space may be added ABOVE the head.
     let top = Math.round(fcy - faceY * S);
     if (noTopPad) top = Math.max(0, top); // the photo cuts the hair: keep its top edge at the top of the DP
+    // Never cut through the top of the head: keep the hair (≈0.45 face-widths above the face box) inside the DP.
+    const headTop = main.y1 - 0.45 * fw;
+    if (!noTopPad && top > headTop - 0.04 * S) top = Math.round(headTop - 0.04 * S);
     if (top + S > H) top = H - S;
     const k = OUT / S;
     const out = canvas(OUT, OUT);
