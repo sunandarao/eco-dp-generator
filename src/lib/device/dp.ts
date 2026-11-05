@@ -222,10 +222,16 @@ export async function generateOnDevice(photo: Blob, variantIndex = 0): Promise<D
 
   // 3–4. Frame (head-and-shoulders) and segment the person
   const fcx = (main.x1 + main.x2) / 2, fcy = (main.y1 + main.y2) / 2;
-  const frame = (zoom: number, fx: number) => {
+  const frame = (zoom: number, fx: number, faceY: number, noTopPad = false) => {
     let S = Math.round(Math.max(zoom * fw, 2.3 * fw));
-    let left = Math.round(fcx - fx * S), top = Math.round(fcy - v.faceY * S);
-    if (S > H) top = H - S; // body runs off the bottom edge; extra space goes above the head
+    // The photo always fills the full WIDTH (no cut-off shoulders at the sides), unless it is extremely narrow.
+    if (S > W) S = Math.max(Math.round(2.3 * fw), W);
+    let left = Math.round(fcx - fx * S);
+    if (S <= W) left = Math.min(Math.max(0, left), W - S);
+    // Never white space BELOW (the body runs off the bottom edge); white space may be added ABOVE the head.
+    let top = Math.round(fcy - faceY * S);
+    if (noTopPad) top = Math.max(0, top); // the photo cuts the hair: keep its top edge at the top of the DP
+    if (top + S > H) top = H - S;
     const k = OUT / S;
     const out = canvas(OUT, OUT);
     out.ctx.fillStyle = "#fff"; out.ctx.fillRect(0, 0, OUT, OUT);
@@ -263,6 +269,11 @@ export async function generateOnDevice(photo: Blob, variantIndex = 0): Promise<D
     const comp = keepComponentsTouching(matte, OUT, face);
     // The phone model is less certain on plain walls: treat <35% person-confidence as background.
     for (let i = 0; i < matte.length; i++) matte[i] = Math.max(0, Math.min(255, Math.round(((matte[i] - 90) / (175 - 90)) * 255)));
+    // Did the original photo cut through the top of the head? (checked before edges are faded)
+    // Then white space above would show a flat-topped head.
+    let hits = 0;
+    for (let x = ix0; x < ix1; x += 2) if (matte[Math.min(OUT - 1, iy0 + 1) * OUT + x] > 128) hits++;
+    const topCut = top <= 0 && hits > 6; // only where the photo's real top edge is in the DP
     const FE = 36; // fade a photo edge that falls inside the DP
     if (ix0 > 0 || iy0 > 0 || ix1 < OUT) {
       for (let y = iy0; y < iy1; y++) for (let x = ix0; x < ix1; x++) {
@@ -278,7 +289,7 @@ export async function generateOnDevice(photo: Blob, variantIndex = 0): Promise<D
     for (let y = Math.max(0, Math.round(face.y1)); y < Math.min(OUT, Math.round(face.y2)); y++)
       for (let x = Math.max(0, Math.round(face.x1)); x < Math.min(OUT, Math.round(face.x2)); x++) { cover += matte[y * OUT + x]; cn++; }
     if (!cn || cover / cn / 255 < 0.6) throw new PhotoRejected("person_unclear");
-    return { out, matte, face, comp, S };
+    return { out, matte, face, comp, S, topCut };
   };
 
   // Logo top-right (the person's left), fixed spot inside WhatsApp's round crop, clear of the head.
@@ -290,17 +301,33 @@ export async function generateOnDevice(photo: Blob, variantIndex = 0): Promise<D
     return true;
   };
   let logo = await logoAt(170);
-  let f = frame(v.zoom * 1.3, 0.42);
+  const logoClear = (fr: { matte: Uint8Array }, lg: HTMLCanvasElement) => clearOf(fr.matte, OUT - LP - lg.width, LP, lg.width, lg.height);
+  // Attempts, least change first: standard layout → a little wider → person moved down (white above the head).
+  const attempts = [
+    { z: 1.3, fx: 0.42, dy: 0 }, { z: 1.5, fx: 0.41, dy: 0 },
+    { z: 1.5, fx: 0.41, dy: 0.06 }, { z: 1.5, fx: 0.41, dy: 0.12 }, { z: 1.5, fx: 0.41, dy: 0.18 },
+  ];
+  let f = frame(v.zoom * attempts[0].z, attempts[0].fx, v.faceY);
   // another sizeable person who wasn't detected as a face (e.g. turned away)
   if (f.comp.otherMax > 0.35 * f.comp.mainArea) throw new PhotoRejected("multiple_people");
-  for (const at of [{ widen: 1.5, fx: 0.41 }, { widen: 1.7, fx: 0.4 }]) {
-    if (clearOf(f.matte, OUT - LP - logo.width, LP, logo.width, logo.height)) break;
-    f = frame(v.zoom * at.widen, at.fx);
+  if (f.topCut) {
+    // The original photo cuts through the top of the head: no white space above (it would show a flat head).
+    f = frame(v.zoom * attempts[0].z, attempts[0].fx, v.faceY, true);
+    if (!logoClear(f, logo)) { const w = frame(v.zoom * 1.5, 0.41, v.faceY, true); if (logoClear(w, logo)) f = w; }
+  } else if (!logoClear(f, logo)) {
+    for (const at of attempts.slice(1)) {
+      const c = frame(v.zoom * at.z, at.fx, v.faceY + at.dy);
+      if (c.topCut) continue;
+      f = c;
+      if (logoClear(c, logo)) break;
+    }
   }
-  if (!clearOf(f.matte, OUT - LP - logo.width, LP, logo.width, logo.height)) {
+  if (!logoClear(f, logo)) {
+    warnings.push("too_close");
+    // very tight photo: smaller logo at the same spot; the person is drawn on top, so it can never cover the face
     for (const size of [150, 130]) {
       logo = await logoAt(size);
-      if (clearOf(f.matte, OUT - LP - logo.width, LP, logo.width, logo.height)) break;
+      if (logoClear(f, logo)) break;
     }
   }
 

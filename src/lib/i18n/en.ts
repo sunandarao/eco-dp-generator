@@ -94,6 +94,7 @@ const en = {
   warnings: {
     low_resolution: "Tip: your photo is low resolution, so the DP may look soft. A clearer photo will give a sharper result.",
     dark_photo: "Tip: your photo was dark. We brightened it, but a photo in better light will look more natural.",
+    too_close: "Tip: this photo is taken very close. For a better DP, hold the phone a little farther away so your head and shoulders fit, with some space above your head.",
   } as Record<string, string>,
   notReady: "Setup pending: the administrator still needs to install",
   missingNames: { logo: "the official ECO logo file", models: "the AI model files", ai_provider: "an approved AI provider", database: "the database" } as Record<string, string>,
