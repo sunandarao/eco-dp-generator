@@ -7,7 +7,7 @@ import { prepareImage } from "@/lib/client-image";
 
 type Screen = "welcome" | "consent" | "declined" | "details" | "upload" | "generate" | "preview" | "success";
 type Status = {
-  generationReady: boolean; missing: string[]; aiProvider: string; branches: string[];
+  generationReady: boolean; missing: string[]; aiMode: "device" | "server"; aiProvider: string; branches: string[];
   noticeVersion: string; privacyEmail: string | null;
 };
 
@@ -36,6 +36,7 @@ export default function DpApp() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [phase, setPhase] = useState<"idle" | "upload" | "process">("idle");
   const [uploadPct, setUploadPct] = useState(0);
+  const device = status?.aiMode === "device";
   const [confirmed, setConfirmed] = useState(false);
   const [cleared, setCleared] = useState(false);
 
@@ -51,6 +52,12 @@ export default function DpApp() {
     setError(null); setScreen(s);
     requestAnimationFrame(() => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }, []);
+
+  // Device mode: start fetching the on-device AI as soon as the user reaches the photo step
+  useEffect(() => {
+    if (!device || (screen !== "upload" && screen !== "generate")) return;
+    import("@/lib/device/dp").then((m) => m.loadModels()).catch(() => {});
+  }, [device, screen]);
 
   // revoke object URLs when replaced
   useEffect(() => () => { if (photoUrl) URL.revokeObjectURL(photoUrl); }, [photoUrl]);
@@ -111,7 +118,30 @@ export default function DpApp() {
     } catch { setError("invalid_image"); } finally { setBusy(false); }
   }
 
+  async function generateOnPhone(v: number) {
+    if (!photo) return;
+    setError(null); setBusy(true); setPhase("upload"); setUploadPct(0);
+    try {
+      const m = await import("@/lib/device/dp");
+      await m.loadModels((pct) => setUploadPct(pct));
+      setPhase("process");
+      await new Promise((r) => setTimeout(r, 30)); // let the progress UI paint before heavy work
+      const r = await m.generateOnDevice(photo, v);
+      // record that a DP was made (no image is sent)
+      const ev = await fetch("/api/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "generated" }) }).catch(() => null);
+      if (ev && ev.status === 403) { setBusy(false); setPhase("idle"); return go("consent"); }
+      setWarnings(r.warnings);
+      setDpBlob(r.blob); setDpUrl(URL.createObjectURL(r.blob)); setVariant(v);
+      setBusy(false); setPhase("idle"); go("preview");
+    } catch (e) {
+      const code = e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : "";
+      setBusy(false); setPhase("idle");
+      setError(code || (e instanceof Error && e.message === "model_download_failed" ? "network" : "processing_failed"));
+    }
+  }
+
   function generate(v: number) {
+    if (device) return void generateOnPhone(v);
     if (!photo) return;
     setError(null); setBusy(true); setPhase("upload"); setUploadPct(0);
     const form = new FormData();
@@ -230,7 +260,8 @@ export default function DpApp() {
               {t.consentPoints.map(([h, body], i) => (
                 <div key={h}>
                   <h2 className="font-bold text-eco">{h}</h2>
-                  <p>{i === 2 && status?.aiProvider !== "local" ? t.whoExternal : body}</p>
+                  <p>{device && i >= 1 && i <= 3 ? [t.devHow, t.devWho, t.devKept][i - 1]
+                    : i === 2 && status?.aiProvider !== "local" ? t.whoExternal : body}</p>
                 </div>
               ))}
               <p className="rounded-xl bg-neutral-100 p-3 text-sm">{t.noBiometric}</p>
@@ -319,7 +350,7 @@ export default function DpApp() {
                 <button className="btn-ghost" onClick={() => go("upload")}>{t.changePhoto}</button>
               </>
             ) : (
-              <Progress t={t} phase={phase} pct={uploadPct} />
+              <Progress t={t} phase={phase} pct={uploadPct} device={device} />
             )}
           </section>
         )}
@@ -342,7 +373,7 @@ export default function DpApp() {
                 <p className="-mt-2 text-center text-xs text-ink-muted">{t.regenHint}</p>
                 <button className="btn-ghost" onClick={() => go("upload")}>{t.tryAnother}</button>
               </>
-            ) : <Progress t={t} phase={phase} pct={uploadPct} />}
+            ) : <Progress t={t} phase={phase} pct={uploadPct} device={device} />}
           </section>
         )}
 
@@ -385,7 +416,7 @@ function errKey(e: unknown) {
   return m && /^[a-z_]+$/.test(m) ? m : "network";
 }
 
-function Progress({ t, phase, pct }: { t: Dict; phase: "upload" | "process" | "idle"; pct: number }) {
+function Progress({ t, phase, pct, device }: { t: Dict; phase: "upload" | "process" | "idle"; pct: number; device: boolean }) {
   return (
     <div className="card flex flex-col gap-3 text-center" aria-live="polite">
       <p className="text-lg font-bold">{t.working}</p>
@@ -395,8 +426,8 @@ function Progress({ t, phase, pct }: { t: Dict; phase: "upload" | "process" | "i
           : <div className="progress-indeterminate h-3 rounded-full" />}
       </div>
       <ol className="text-left text-sm">
-        <li className={phase === "upload" ? "font-bold text-eco" : "text-green-700"}>{phase === "upload" ? "●" : "✓"} {t.uploading}{phase === "upload" ? ` (${pct}%)` : ""}</li>
-        <li className={phase === "process" ? "font-bold text-eco" : "text-ink-muted"}>{phase === "process" ? "●" : "○"} {t.processing}</li>
+        <li className={phase === "upload" ? "font-bold text-eco" : "text-green-700"}>{phase === "upload" ? "●" : "✓"} {device ? t.loadingAi : t.uploading}{phase === "upload" ? ` (${pct}%)` : ""}</li>
+        <li className={phase === "process" ? "font-bold text-eco" : "text-ink-muted"}>{phase === "process" ? "●" : "○"} {device ? t.processingDevice : t.processing}</li>
       </ol>
       <p className="text-sm text-ink-muted">{t.pleaseWait}</p>
     </div>

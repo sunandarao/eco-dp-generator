@@ -15,6 +15,7 @@ export async function GET() {
       !s.externalOk && "ai_provider",
       !s.databaseOk && "database",
     ].filter(Boolean),
+    aiMode: config.aiMode,
     aiProvider: config.aiProvider === "local" ? "local" : config.aiProvider,
     branches: config.branches,
     noticeVersion: config.noticeVersion,

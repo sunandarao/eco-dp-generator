@@ -9,6 +9,13 @@ Board provisions first, and the consent-manager and most Data Fiduciary obligati
 ECO Legal should confirm which obligations are in force on the launch date. The design below aims to meet the
 substantive obligations regardless of phasing.
 
+## 0. Processing mode
+
+In the default **device mode** (`AI_MODE=device`), the photograph is processed by AI inside the user's own phone
+browser and is **never transmitted** to ECO, the hosting provider or any AI company. ECO receives only the
+participation records listed below. The hosting provider (e.g. Render) and the database provider (Supabase) process
+only those non-image records. In **server mode** the photograph is processed in server memory as described below.
+
 ## 1. Data inventory
 
 | Data | Purpose | Where | Retention |
@@ -70,3 +77,5 @@ location, device identifiers or IP addresses. IP addresses are used only in memo
 | 16 | Real-device testing on low-end Android phones and in-app browsers (WhatsApp's link browser), plus a pilot with chauffeurs | Ops / IT | **Open** |
 | 17 | Bias and quality testing of segmentation across skin tones, head coverings (turbans, hijabs, caps), beards and spectacles, with a pilot group's consent | IT / HR | **Open** |
 | 18 | Supabase path is implemented but was not executed against a live Supabase project during development | IT | **Open** |
+| 19 | Device mode: approve the hosting provider (Render, Singapore) and Supabase as processors of the non-image participation records | IT / Legal | **Open** |
+| 20 | Device mode: test on low-end Android phones and on slow mobile data (first use downloads ~26 MB) | Ops / IT | **Open** |

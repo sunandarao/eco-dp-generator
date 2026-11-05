@@ -23,7 +23,9 @@ export const config = {
   // 1 = the official logo exactly as supplied (original ECO red). Lower values fade it.
   watermarkOpacity: Math.min(1, Math.max(0.04, Number(process.env.WATERMARK_OPACITY || "1"))),
 
-  // AI
+  // AI: "device" = AI runs in the phone's browser, photo never uploaded (free hosting).
+  //     "server" = AI runs on this server (needs ~2 GB RAM).
+  aiMode: (process.env.AI_MODE === "server" ? "server" : "device") as "device" | "server",
   modelsDir: process.env.MODELS_DIR || path.join(root, "models"),
   aiProvider: (process.env.AI_PROVIDER || "local") as "local" | "removebg",
   externalProviderApproved: bool(process.env.EXTERNAL_AI_PROVIDER_APPROVED),
@@ -67,14 +69,18 @@ export function fileExists(p: string) {
 /** Status of every external dependency, without exposing secrets. */
 export function configStatus() {
   const logo = fileExists(config.logoPath);
-  const models = fileExists(path.join(config.modelsDir, "u2net_human_seg.onnx")) &&
-    fileExists(path.join(config.modelsDir, "face-rfb-320.onnx"));
-  const externalOk = config.aiProvider === "local" ||
+  const models = config.aiMode === "device"
+    ? fileExists(path.join(root, "public/models/device/selfie_multiclass_256x256.tflite")) &&
+      fileExists(path.join(root, "public/models/device/blaze_face_short_range.tflite")) &&
+      fileExists(path.join(root, "public/mediapipe/wasm/vision_wasm_internal.wasm"))
+    : fileExists(path.join(config.modelsDir, "u2net_human_seg.onnx")) &&
+      fileExists(path.join(config.modelsDir, "face-rfb-320.onnx"));
+  const externalOk = config.aiMode === "device" || config.aiProvider === "local" ||
     (config.externalProviderApproved && (config.aiProvider !== "removebg" || !!config.removeBgApiKey));
   const db = config.supabaseUrl && config.supabaseServiceKey ? "supabase" : config.allowFileStore ? "file (development only)" : "NOT CONFIGURED";
   return {
     logo, watermarkVariant: fileExists(config.watermarkLogoPath), models,
-    aiProvider: config.aiProvider, externalProviderApproved: config.externalProviderApproved, externalOk,
+    aiMode: config.aiMode, aiProvider: config.aiProvider, externalProviderApproved: config.externalProviderApproved, externalOk,
     database: db, databaseOk: db !== "NOT CONFIGURED",
     admin: !!(config.adminUsername && config.adminPasswordHash && config.adminSessionSecret.length >= 32),
     privacyContact: !!config.privacyEmail, cron: !!config.cronSecret,

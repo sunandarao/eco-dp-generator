@@ -1,82 +1,70 @@
 # Deployment guide
 
-## Recommended: Google Cloud Run (Mumbai) + Supabase (Mumbai)
+The app has two AI modes (environment variable `AI_MODE`):
 
-**Cost:** ₹0 for a campaign of this size (about 900 users and ~2,700 DPs use under 20% of Cloud Run's free
-monthly allowance). Google needs a card to open the account; set the budget alert in step 8.
+| Mode | Where the AI runs | Server memory | Hosting |
+|---|---|---|---|
+| `device` (default) | In the user's phone browser (Google MediaPipe models). **The photo is never uploaded.** | ~200 MB | Free (Render free plan) |
+| `server` | On the server (U²-Net + face detector) – slightly crisper hair edges | ~1.5 GB peak (2 GB recommended) | Paid or Cloud Run |
 
-**Data location:** India (`asia-south1` Mumbai for the app, `ap-south-1` Mumbai for the database).
+## Recommended free setup: Render (free) + Supabase (free)
+
+**Cost:** ₹0. Render's free plan normally needs no card. Supabase free tier holds the small participation records.
 
 ### 1. Database (Supabase)
-1. supabase.com → New organization (Free) → New project, region **Mumbai**.
+1. supabase.com → New organization (Free) → New project (choose the Mumbai / Asia-Pacific region).
 2. SQL Editor → paste `supabase/schema.sql` → Run → "Success. No rows returned".
 3. Save the **Project URL** and the **secret / service_role key**.
 
-### 2. Google Cloud account
-1. Go to console.cloud.google.com and sign in with a Google account.
-2. Accept the terms. Start the free trial or set up billing with a card (needed even for free usage).
-3. Create a project named `eco-dp`.
+### 2. Admin password
+Run `npm run hash-password -- "<a strong password>"` on any computer with Node.js. This prints
+`ADMIN_PASSWORD_HASH` and `ADMIN_SESSION_SECRET`.
 
-### 3. Deploy from GitHub
-1. Console search bar → **Cloud Run** → **Deploy container** → **Service**.
-2. Choose **Continuously deploy from a repository (source or function)** → **Set up with Cloud Build**.
-3. Provider **GitHub** → authenticate → repository `sunandarao/eco-dp-generator` → **Next**.
-4. Branch `^main$`, build type **Dockerfile**, path `/Dockerfile` → **Save**.
-5. Service name `eco-dp`. Region **asia-south1 (Mumbai)**.
-6. Authentication: **Allow public access** (unauthenticated invocations).
-7. Billing: **Request-based**. Minimum instances `0`. Maximum instances `5`.
-8. **Container(s), Volumes, Networking, Security** → **Settings** tab:
-   - Memory **2 GiB**, CPU **2**, Request timeout **120** seconds
-   - Maximum concurrent requests per instance **8**
-   - Startup CPU boost **on**
-9. **Variables & Secrets** tab → add the environment variables (next section).
-10. Click **Create**. The first build takes about 10 minutes. Afterwards every push to `main` redeploys automatically.
-
-### 4. Environment variables
+### 3. Deploy on Render
+1. render.com → **Get started** → sign up with **GitHub**.
+2. **New +** → **Blueprint** → select `sunandarao/eco-dp-generator` → Render reads `render.yaml`.
+3. Fill in the values it asks for:
 
 | Name | Value |
 |---|---|
-| `SUPABASE_URL` | from step 1 |
-| `SUPABASE_SERVICE_ROLE_KEY` | from step 1 |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | from step 1 |
 | `ADMIN_USERNAME` | e.g. `ecoadmin` |
-| `ADMIN_PASSWORD_HASH` / `ADMIN_SESSION_SECRET` | output of `npm run hash-password -- "<strong password>"` |
+| `ADMIN_PASSWORD_HASH` / `ADMIN_SESSION_SECRET` | from step 2 |
 | `CRON_SECRET` | any long random text |
-| `PRIVACY_CONTACT_EMAIL`, `GRIEVANCE_OFFICER_NAME` | ECO privacy contact |
-| `HOSTING_DISCLOSURE` | `Google Cloud (Mumbai, India) hosts this application for ECO.` |
-| `BRANCHES` | your branch list, comma-separated |
-| `MAX_CONCURRENT_JOBS` | `2` |
+| `PRIVACY_CONTACT_EMAIL` / `GRIEVANCE_OFFICER_NAME` | ECO privacy contact |
+| `BRANCHES` | comma-separated branch list |
 
-For stronger protection you can store the two keys in **Secret Manager** and reference them here instead.
+4. **Apply**. The first build takes about 5 minutes. The app address is `https://eco-dp-xxxx.onrender.com`.
+   Every push to `main` redeploys automatically.
 
-### 5. Open it
-The service page shows a URL like `https://eco-dp-xxxxxxxx.asia-south1.run.app`. Open `/admin`, sign in, and
-check that **System configuration** is all ✓. Then make a DP on an Android phone.
-To use a custom domain such as `dp.ecomobility.com`, see Cloud Run → **Manage custom domains**.
+### 4. Keep it awake + daily deletion (cron-job.org, free)
+Render's free plan sleeps after 15 minutes without visitors (waking takes about 1 minute). Create two jobs:
+1. **Keep awake:** every 10 minutes, GET `https://<app>/api/status`.
+   750 free hours a month covers one service running all month.
+2. **Daily deletion:** daily at 02:00 IST, GET `https://<app>/api/cron/retention` with header
+   `Authorization: Bearer <CRON_SECRET>`.
 
-### 6. Daily deletion job
-Cloud Scheduler (3 jobs are free) → **Create job**:
-- Frequency `0 2 * * *`, timezone Asia/Kolkata
-- Target **HTTP**, URL `https://<service-url>/api/cron/retention`, method GET
-- Header `Authorization: Bearer <CRON_SECRET>`
+### 5. Check
+Open `https://<app>/admin` → sign in → **System configuration** should be all ✓ ("AI mode: on the phone").
+Then make a DP on an Android phone.
 
-### 7. Rollout tips
-- Each instance processes 2 DPs at a time and up to 5 instances run, so about 10 DPs are processed at once.
-  The rest wait a few seconds. Sharing the link branch by branch avoids queues.
-- After a quiet period the first visitor waits about 10–20 s while an instance starts.
+### Notes on device mode
+- First use downloads about 26 MB (AI runtime + models) to the phone, then it is cached for 30 days.
+  On slow mobile data the first DP can take up to a minute; later DPs take a few seconds.
+- Tested in Chromium (desktop and emulated Android). Expected to work in current Chrome for Android, Samsung Internet
+  and Safari, but real-device testing on low-end phones is still required.
+- The server never receives photos: `/api/generate` is disabled in device mode.
 
-### 8. Budget alert (recommended)
-Billing → **Budgets & alerts** → Create budget → amount ₹100 → alerts at 50%, 90%, 100% → email.
+## Server-AI alternative: Google Cloud Run (Mumbai)
+Set `AI_MODE=server` and deploy the `Dockerfile`:
+- Region `asia-south1`, 2 GiB memory, 2 CPU, concurrency 8, max instances 5, request timeout 120 s.
+- Free within Cloud Run's monthly allowance for about 900 users. In India, a ₹1,000 prepayment (kept as credit)
+  is required to open the account.
 
 ## Other options
 
 | Option | Cost | Notes |
 |---|---|---|
-| Hugging Face Spaces (Docker) | about USD 9 / month (PRO) | Free plan no longer runs Docker apps. Servers in the USA. |
-| Render (Standard 2 GB) | about USD 25 / month | Singapore region. |
-| Any VM or container host | varies | Run the Docker image with ≥2 GB RAM. |
-
-**Memory:** the app peaks at about 1.4 GB while generating a DP, so free tiers with 512 MB (Render Free,
-Koyeb Free and similar) cannot run it.
-
-**Vercel:** the free Hobby plan is for non-commercial use only, and the AI runtime plus the 176 MB model exceeds
-Vercel's 250 MB function limit.
+| Hugging Face Spaces (Docker) | about USD 9 / month (PRO) | Its free plan no longer runs Docker apps. |
+| Render Standard (server AI) | about USD 25 / month | `AI_MODE=server`. |
+| Vercel | – | Free Hobby plan is non-commercial only. |

@@ -11,6 +11,14 @@ Preview → Download → WhatsApp instructions → "I have updated my DP".
 > items in [`docs/DPDP-COMPLIANCE.md`](docs/DPDP-COMPLIANCE.md) §3 closed: Legal/IT approval, the official logo
 > file, translation review, hosting, database and a security test.
 
+## Two AI modes
+
+- **`AI_MODE=device` (default, free hosting):** the AI runs in the phone's browser (Google MediaPipe face detector and
+  selfie segmentation, Apache-2.0). **The photo never leaves the phone.** The server only records participation.
+- **`AI_MODE=server`:** the AI runs on the server as described below (needs about 2 GB RAM).
+
+Both modes use the same layout, checks and identity-preserving enhancement. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
 ## How the AI works (and why it preserves identity)
 
 All processing happens **on ECO's server**. Photos are not sent to any external AI company by default.

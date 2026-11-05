@@ -1,6 +1,5 @@
 import { config, configStatus } from "@/lib/config";
 import { db } from "@/lib/db";
-import { generateDP, PhotoRejected } from "@/lib/ai/pipeline";
 import { recordEvent } from "@/lib/participants";
 import { clientIp, getPid, json, rateLimit, sameOrigin } from "@/lib/security";
 
@@ -14,6 +13,9 @@ export const maxDuration = 60;
  */
 export async function POST(req: Request) {
   if (!(await sameOrigin())) return json({ error: "forbidden" }, 403);
+  if (config.aiMode === "device") return json({ error: "server_ai_disabled" }, 410); // AI runs on the phone
+  // loaded only in server mode, so device-mode hosting never loads the AI runtime
+  const { generateDP, PhotoRejected } = await import("@/lib/ai/pipeline");
   const s = configStatus();
   if (!s.generationReady) return json({ error: "not_configured", missing: { logo: !s.logo, models: !s.models, ai: !s.externalOk, db: !s.databaseOk } }, 503);
 

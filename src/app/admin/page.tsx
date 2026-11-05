@@ -182,8 +182,9 @@ export default async function AdminPage({ searchParams }: { searchParams: SP }) 
           <ul className="flex flex-col gap-1">
             <li>Official ECO logo file: {ok(cs.logo)} {!cs.logo && <span className="text-xs">→ place at public/brand/eco-logo.png</span>}</li>
             <li>Transparent watermark variant (optional): {cs.watermarkVariant ? ok(true) : <span className="text-ink-muted">not provided</span>}</li>
-            <li>On-server AI models: {ok(cs.models)}</li>
-            <li>AI provider: <b>{cs.aiProvider}</b> {cs.aiProvider === "local" ? "(no third-party transfer)" : cs.externalProviderApproved ? "(approved)" : "(NOT approved – disabled)"} {ok(cs.externalOk)}</li>
+            <li>AI mode: <b>{cs.aiMode === "device" ? "on the phone (photos never uploaded)" : "on this server"}</b></li>
+            <li>AI model files: {ok(cs.models)}</li>
+            {cs.aiMode === "server" && <li>AI provider: <b>{cs.aiProvider}</b> {cs.aiProvider === "local" ? "(no third-party transfer)" : cs.externalProviderApproved ? "(approved)" : "(NOT approved – disabled)"} {ok(cs.externalOk)}</li>}
             <li>Database: <b>{cs.database}</b> {ok(cs.databaseOk)}</li>
             <li>Privacy contact: {ok(cs.privacyContact)}</li>
             <li>Scheduled deletion (CRON_SECRET): {ok(cs.cron)}</li>
@@ -194,7 +195,7 @@ export default async function AdminPage({ searchParams }: { searchParams: SP }) 
         <div className="rounded-2xl border border-neutral-200 p-4 text-sm">
           <h2 className="mb-3 text-lg font-bold">Retention</h2>
           <ul className="mb-3 list-disc pl-5">
-            <li>Photographs / DPs: never stored (memory only)</li>
+            <li>Photographs / DPs: never stored{cs.aiMode === "device" ? " (never leave the phone)" : " (server memory only)"}</li>
             <li>Participation records: {config.participantRetentionDays} days after last update</li>
             <li>Consent log: {config.consentLogRetentionDays} days</li>
             <li>Closed privacy requests: {config.privacyRequestRetentionDays} days</li>

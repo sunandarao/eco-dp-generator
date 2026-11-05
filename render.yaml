@@ -1,0 +1,39 @@
+# Render Blueprint – free web service. Render → New → Blueprint → pick this repository.
+# The AI runs on users' phones (AI_MODE=device), so the server needs only ~200 MB RAM.
+services:
+  - type: web
+    name: eco-dp
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci && npm run models:device && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/status
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: AI_MODE
+        value: device
+      - key: ONNXRUNTIME_NODE_INSTALL_CUDA
+        value: skip
+      - key: HOSTING_DISCLOSURE
+        value: "Render (Singapore) hosts this website for ECO. Photos never leave your phone."
+      # Values below are entered in the Render dashboard (sync: false = not stored in this file)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: ADMIN_SESSION_SECRET
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: PRIVACY_CONTACT_EMAIL
+        sync: false
+      - key: GRIEVANCE_OFFICER_NAME
+        sync: false
+      - key: BRANCHES
+        sync: false

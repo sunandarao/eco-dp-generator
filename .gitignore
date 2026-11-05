@@ -11,3 +11,8 @@ next-env.d.ts
 models/*.onnx
 # The official logo is supplied by ECO and managed outside the repository if required
 # public/brand/eco-logo.png
+
+# On-device AI files (downloaded / copied at build time)
+public/models/device/*.tflite
+public/mediapipe/
+public/brand/eco-logo-256.png

@@ -18,7 +18,7 @@ RUN node scripts/fetch-models.mjs && npm run build
 
 FROM node:22-bookworm-slim AS run
 WORKDIR /app
-ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
+ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 AI_MODE=server
 RUN groupadd -r app && useradd -r -g app app
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static

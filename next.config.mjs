@@ -2,7 +2,8 @@ const isDev = process.env.NODE_ENV !== "production";
 
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  // 'wasm-unsafe-eval' lets the on-device AI (WebAssembly) run; no other eval is allowed
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' blob: data:",
   "font-src 'self'",
@@ -35,6 +36,9 @@ const nextConfig = {
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
         ],
       },
+      // on-device AI files: downloaded once, then cached by the phone
+      { source: "/models/device/:file*", headers: [{ key: "Cache-Control", value: "public, max-age=2592000, immutable" }] },
+      { source: "/mediapipe/:file*", headers: [{ key: "Cache-Control", value: "public, max-age=2592000, immutable" }] },
       { source: "/admin/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }, { key: "Cache-Control", value: "no-store" }] },
     ];
   },

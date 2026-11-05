@@ -1,6 +1,7 @@
 /** Runs once when the server starts (Next.js instrumentation hook). */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  if (process.env.AI_MODE !== "server") return; // device mode: AI runs on the phone
   const t = Date.now();
   try {
     const { warmup } = await import("./lib/ai/pipeline");

@@ -118,6 +118,11 @@ const en = {
   pBoard: "If you are not satisfied with our response, you may approach the Data Protection Board of India after using ECO's grievance process.",
   pLegalNote: "Full privacy notice (English)",
   pBack: "Back",
+  devHow: "An AI model that runs on your own phone removes the background, adjusts brightness and sharpness, and places the ECO logo behind you. It does not change your face, skin tone or clothes.",
+  devWho: "Your own phone. Your photo is never uploaded – not to ECO and not to any AI company.",
+  devKept: "Your photo stays only on your phone and is cleared when you close this page. ECO never receives your photo or your DP.",
+  loadingAi: "Getting the AI ready on your phone (first time only)",
+  processingDevice: "AI on your phone is removing the background and improving lighting",
 };
 
 export default en;
