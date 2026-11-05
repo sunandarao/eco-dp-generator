@@ -34,8 +34,8 @@ export const config = {
   maxUploadBytes: int(process.env.MAX_UPLOAD_MB, 12) * 1024 * 1024,
 
   // Database
-  supabaseUrl: process.env.SUPABASE_URL || "",
-  supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+  supabaseUrl: (process.env.SUPABASE_URL || "").trim(),
+  supabaseServiceKey: (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim(),
   allowFileStore: bool(process.env.ALLOW_FILE_STORE, process.env.NODE_ENV !== "production"),
   fileStorePath: process.env.FILE_STORE_PATH || path.join(root, ".data/store.json"),
 
@@ -43,12 +43,13 @@ export const config = {
   participantRetentionDays: int(process.env.PARTICIPANT_RECORD_RETENTION_DAYS, 180),
   consentLogRetentionDays: int(process.env.CONSENT_LOG_RETENTION_DAYS, 365),
   privacyRequestRetentionDays: int(process.env.PRIVACY_REQUEST_RETENTION_DAYS, 365),
-  cronSecret: process.env.CRON_SECRET || "",
+  cronSecret: (process.env.CRON_SECRET || "").trim(),
 
   // Admin
-  adminUsername: process.env.ADMIN_USERNAME || "",
-  adminPasswordHash: process.env.ADMIN_PASSWORD_HASH || "",
-  adminSessionSecret: process.env.ADMIN_SESSION_SECRET || "",
+  // trimmed: values pasted into hosting dashboards often carry stray spaces/newlines
+  adminUsername: (process.env.ADMIN_USERNAME || "").trim(),
+  adminPasswordHash: (process.env.ADMIN_PASSWORD_HASH || "").trim(),
+  adminSessionSecret: (process.env.ADMIN_SESSION_SECRET || "").trim(),
   adminIpAllowlist: (process.env.ADMIN_IP_ALLOWLIST || "").split(",").map((s) => s.trim()).filter(Boolean),
 
   // Privacy notice
