@@ -16,6 +16,9 @@ services:
         value: device
       - key: ONNXRUNTIME_NODE_INSTALL_CUDA
         value: skip
+      # Employee/Chauffeur ID is compulsory so ECO knows who has made a DP
+      - key: REQUIRE_STAFF_ID
+        value: "true"
       - key: HOSTING_DISCLOSURE
         value: "Render (Singapore) hosts this website for ECO. Photos never leave your phone."
       # Values below are entered in the Render dashboard (sync: false = not stored in this file)

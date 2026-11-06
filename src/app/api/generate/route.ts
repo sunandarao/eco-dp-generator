@@ -22,6 +22,7 @@ export async function POST(req: Request) {
   const id = await getPid();
   const p = id ? await db().getParticipant(id) : null;
   if (!p || !p.consent_at || p.consent_version !== config.noticeVersion) return json({ error: "consent_required" }, 403);
+  if (config.requireStaffId && !p.staff_id) return json({ error: "details_required" }, 403);
 
   const ip = await clientIp();
   if (!rateLimit("gen:" + p.id, 15, 60 * 60_000) || !rateLimit("genip:" + ip, 60, 60 * 60_000)) return json({ error: "rate_limited" }, 429);

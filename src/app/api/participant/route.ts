@@ -32,6 +32,7 @@ export async function PATCH(req: Request) {
   const body = await req.json().catch(() => ({}));
   const d = cleanDetails(body ?? {});
   if (d.staffIdInvalid) return json({ error: "invalid_staff_id" }, 400);
+  if (config.requireStaffId && !d.staff_id) return json({ error: "staff_id_required" }, 400);
   p.category = d.category; p.branch = d.branch; p.staff_id = d.staff_id;
   p.updated_at = new Date().toISOString();
   await db().upsertParticipant(p);

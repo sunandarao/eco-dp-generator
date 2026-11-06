@@ -19,6 +19,7 @@ export async function POST(req: Request) {
     if (config.aiMode !== "device") return json({ error: "invalid_event" }, 400);
     const p = await db().getParticipant(id);
     if (!p?.consent_at || p.consent_version !== config.noticeVersion) return json({ error: "consent_required" }, 403);
+    if (config.requireStaffId && !p.staff_id) return json({ error: "details_required" }, 403);
   }
   const p = await recordEvent(id, type);
   if (!p) return json({ error: "no_record" }, 404);

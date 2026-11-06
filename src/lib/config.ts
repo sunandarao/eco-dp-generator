@@ -52,11 +52,14 @@ export const config = {
   adminSessionSecret: (process.env.ADMIN_SESSION_SECRET || "").trim(),
   adminIpAllowlist: (process.env.ADMIN_IP_ALLOWLIST || "").split(",").map((s) => s.trim()).filter(Boolean),
 
+  // Employee/Chauffeur ID compulsory (so ECO knows who has made a DP). The privacy notice says so when on.
+  requireStaffId: bool(process.env.REQUIRE_STAFF_ID),
+
   // Privacy notice
   // Public address of the app (optional; used for origin checks behind proxies) and hosting disclosure for the notice
   publicUrl: process.env.PUBLIC_URL || "",
   hostingDisclosure: process.env.HOSTING_DISCLOSURE || "",
-  noticeVersion: process.env.PRIVACY_NOTICE_VERSION || "2026-11-v1-DRAFT",
+  noticeVersion: process.env.PRIVACY_NOTICE_VERSION || "2026-11-v2-DRAFT",
   privacyEmail: process.env.PRIVACY_CONTACT_EMAIL || "",
   grievanceOfficer: process.env.GRIEVANCE_OFFICER_NAME || "",
   branches: (process.env.BRANCHES || "Delhi NCR,Gurugram,Noida,Mumbai,Pune,Bengaluru,Hyderabad,Chennai,Kolkata,Ahmedabad,Other")

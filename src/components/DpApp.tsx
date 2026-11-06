@@ -7,7 +7,7 @@ import { prepareImage } from "@/lib/client-image";
 
 type Screen = "welcome" | "consent" | "declined" | "details" | "upload" | "generate" | "preview" | "success";
 type Status = {
-  generationReady: boolean; missing: string[]; aiMode: "device" | "server"; aiProvider: string; branches: string[];
+  generationReady: boolean; missing: string[]; aiMode: "device" | "server"; requireStaffId: boolean; aiProvider: string; branches: string[];
   noticeVersion: string; privacyEmail: string | null;
 };
 
@@ -37,6 +37,7 @@ export default function DpApp() {
   const [phase, setPhase] = useState<"idle" | "upload" | "process">("idle");
   const [uploadPct, setUploadPct] = useState(0);
   const device = status?.aiMode === "device";
+  const idRequired = !!status?.requireStaffId;
   const [confirmed, setConfirmed] = useState(false);
   const [cleared, setCleared] = useState(false);
 
@@ -71,7 +72,8 @@ export default function DpApp() {
         if (r.record.categoryCode) setCategory(r.record.categoryCode);
         if (r.record.branch) setBranch(r.record.branch);
         if (r.record.staffId) setStaffId(r.record.staffId);
-        return go("upload");
+        // ID now compulsory but not given earlier: ask for it first
+        return go(idRequired && !r.record.staffId ? "details" : "upload");
       }
     } catch {}
     go("consent");
@@ -93,11 +95,13 @@ export default function DpApp() {
   async function saveDetails(skip: boolean) {
     setBusy(true); setError(null);
     try {
+      if (idRequired && !staffId.trim()) { setError("staffReq"); return; }
       const body = skip ? {} : { category, branch: branch || null, staffId: staffId.trim() || null };
       const r = await fetch("/api/participant", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       if (!r.ok) {
         const e = (await r.json().catch(() => ({}))).error;
         if (e === "invalid_staff_id") { setError("staff"); return; }
+        if (e === "staff_id_required") { setError("staffReq"); return; }
         throw new Error(e || "processing_failed");
       }
       go("upload");
@@ -129,7 +133,11 @@ export default function DpApp() {
       const r = await m.generateOnDevice(photo, v);
       // record that a DP was made (no image is sent)
       const ev = await fetch("/api/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "generated" }) }).catch(() => null);
-      if (ev && ev.status === 403) { setBusy(false); setPhase("idle"); return go("consent"); }
+      if (ev && ev.status === 403) {
+        const why = (await ev.json().catch(() => ({}))).error;
+        setBusy(false); setPhase("idle");
+        return go(why === "details_required" ? "details" : "consent");
+      }
       setWarnings(r.warnings);
       setDpBlob(r.blob); setDpUrl(URL.createObjectURL(r.blob)); setVariant(v);
       setBusy(false); setPhase("idle"); go("preview");
@@ -206,7 +214,7 @@ export default function DpApp() {
   }
 
   const canShare = typeof navigator !== "undefined" && !!navigator.canShare;
-  const errText = error && error !== "staff" ? t.errors[error] || t.warnings[error] || t.errors.processing_failed : null;
+  const errText = error && error !== "staff" && error !== "staffReq" ? t.errors[error] || t.warnings[error] || t.errors.processing_failed : null;
 
   return (
     <div ref={topRef} className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-10">
@@ -260,7 +268,8 @@ export default function DpApp() {
               {t.consentPoints.map(([h, body], i) => (
                 <div key={h}>
                   <h2 className="font-bold text-eco">{h}</h2>
-                  <p>{device && i >= 1 && i <= 3 ? [t.devHow, t.devWho, t.devKept][i - 1]
+                  <p>{idRequired && i === 4 ? t.recordReq
+                    : device && i >= 1 && i <= 3 ? [t.devHow, t.devWho, t.devKept][i - 1]
                     : i === 2 && status?.aiProvider !== "local" ? t.whoExternal : body}</p>
                 </div>
               ))}
@@ -288,8 +297,16 @@ export default function DpApp() {
 
         {screen === "details" && (
           <section className="flex flex-col gap-4 py-2">
-            <h1 className="text-2xl font-extrabold">{t.detailsTitle}</h1>
-            <p className="text-ink-muted">{t.detailsSub}</p>
+            <h1 className="text-2xl font-extrabold">{idRequired ? t.detailsTitleReq : t.detailsTitle}</h1>
+            <p className="text-ink-muted">{idRequired ? t.detailsSubReq : t.detailsSub}</p>
+            {idRequired && (
+              <label className="flex flex-col gap-2 font-bold">{t.staffLabelReq} <span className="sr-only">*</span>
+                <input className="field font-normal uppercase" value={staffId} maxLength={32} autoComplete="off" inputMode="text" required
+                  aria-invalid={error === "staff" || error === "staffReq"} onChange={(e) => setStaffId(e.target.value)} />
+                {error === "staff" && <span className="text-sm font-semibold text-eco">{t.staffInvalid}</span>}
+                {error === "staffReq" && <span className="text-sm font-semibold text-eco">{t.staffRequired}</span>}
+              </label>
+            )}
             <fieldset className="flex flex-col gap-2">
               <legend className="mb-2 font-bold">{t.catLabel}</legend>
               {CATS.map((c) => (
@@ -305,13 +322,15 @@ export default function DpApp() {
                 {status?.branches.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
             </label>
-            <label className="flex flex-col gap-2 font-bold">{t.staffLabel}
-              <input className="field font-normal uppercase" value={staffId} maxLength={32} autoComplete="off" inputMode="text"
-                onChange={(e) => setStaffId(e.target.value)} />
-              {error === "staff" && <span className="text-sm font-semibold text-eco">{t.staffInvalid}</span>}
-            </label>
+            {!idRequired && (
+              <label className="flex flex-col gap-2 font-bold">{t.staffLabel}
+                <input className="field font-normal uppercase" value={staffId} maxLength={32} autoComplete="off" inputMode="text"
+                  onChange={(e) => setStaffId(e.target.value)} />
+                {error === "staff" && <span className="text-sm font-semibold text-eco">{t.staffInvalid}</span>}
+              </label>
+            )}
             <button className="btn-primary" disabled={busy} onClick={() => saveDetails(false)}>{t.next}</button>
-            <button className="btn-ghost" disabled={busy} onClick={() => saveDetails(true)}>{t.skip}</button>
+            {!idRequired && <button className="btn-ghost" disabled={busy} onClick={() => saveDetails(true)}>{t.skip}</button>}
           </section>
         )}
 

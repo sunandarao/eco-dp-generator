@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { config, configStatus } from "@/lib/config";
 import { db, CATEGORIES, type Participant, type PrivacyRequest, type AuditEntry } from "@/lib/db";
-import { categoryLabel, computeStats, status as rowStatus } from "@/lib/participants";
+import { categoryLabel, computeStats, mergeByStaffId, status as rowStatus } from "@/lib/participants";
 import { getAdmin } from "@/lib/security";
 import { LogoutButton, RequestActions, RetentionButton } from "@/components/admin/AdminActions";
 
@@ -28,11 +28,12 @@ export default async function AdminPage({ searchParams }: { searchParams: SP }) 
   } catch (e) {
     dbError = (e as Error).message; rows = []; requests = []; audit = [];
   }
-  const s = computeStats(rows);
+  const people = mergeByStaffId(rows); // one row per Employee/Chauffeur ID
+  const s = computeStats(people);
   const cs = configStatus();
 
   const f = { category: sp.category || "", branch: sp.branch || "", status: sp.status || "", q: (sp.q || "").toUpperCase() };
-  const filtered = rows.filter((p) =>
+  const filtered = people.filter((p) =>
     (!f.category || (f.category === "none" ? !p.category : p.category === f.category)) &&
     (!f.branch || (p.branch || "Not specified") === f.branch) &&
     (!f.status || rowStatus(p) === STATUS_FILTERS[f.status]) &&

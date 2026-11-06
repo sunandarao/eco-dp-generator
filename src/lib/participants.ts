@@ -37,6 +37,33 @@ export function audit(actor: string, action: string, detail?: string) {
   return db().addAudit({ id: crypto.randomUUID(), actor, action, detail: detail ?? null, created_at: new Date().toISOString() });
 }
 
+/**
+ * One row per person: records with the same Employee/Chauffeur ID (e.g. one person on two phones, or after
+ * clearing the browser) are merged. Records without an ID stay separate.
+ */
+export function mergeByStaffId(rows: Participant[]): (Participant & { merged: number })[] {
+  const min = (a: string | null, b: string | null) => (!a ? b : !b ? a : a < b ? a : b);
+  const map = new Map<string, Participant & { merged: number }>();
+  for (const r of [...rows].sort((a, b) => a.updated_at.localeCompare(b.updated_at))) {
+    const key = r.staff_id ? "id:" + r.staff_id : "rec:" + r.id;
+    const m = map.get(key);
+    if (!m) { map.set(key, { ...r, merged: 1 }); continue; }
+    m.merged++;
+    m.generated_count += r.generated_count;
+    m.download_count += r.download_count;
+    m.first_generated_at = min(m.first_generated_at, r.first_generated_at);
+    m.first_downloaded_at = min(m.first_downloaded_at, r.first_downloaded_at);
+    m.whatsapp_confirmed_at = min(m.whatsapp_confirmed_at, r.whatsapp_confirmed_at);
+    m.consent_at = min(m.consent_at, r.consent_at);
+    m.created_at = min(m.created_at, r.created_at) ?? m.created_at;
+    m.category = r.category ?? m.category;   // latest non-empty wins
+    m.branch = r.branch ?? m.branch;
+    m.consent_version = r.consent_version ?? m.consent_version;
+    m.updated_at = r.updated_at;
+  }
+  return [...map.values()];
+}
+
 export type Stats = ReturnType<typeof computeStats>;
 export function computeStats(rows: Participant[]) {
   const gen = rows.filter((p) => p.generated_count > 0);
@@ -81,15 +108,15 @@ export function status(p: Participant) {
 }
 
 /** CSV with protection against spreadsheet formula injection. No photographs, no IP addresses. */
-export function toCsv(rows: Participant[]) {
+export function toCsv(rows: (Participant & { merged?: number })[]) {
   const esc = (v: unknown) => {
     let s = v === null || v === undefined ? "" : String(v);
     if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const head = ["Record ID", "Employee/Chauffeur ID", "Category", "Branch", "Completion status", "Consent notice version",
-    "Consent given at", "DPs generated", "First generated at", "Downloads", "First downloaded at", "WhatsApp update confirmed at"];
+    "Consent given at", "DPs generated", "First generated at", "Downloads", "First downloaded at", "WhatsApp update confirmed at", "Records merged"];
   const lines = rows.map((p) => [p.id, p.staff_id, categoryLabel(p.category), p.branch, status(p), p.consent_version, p.consent_at,
-    p.generated_count, p.first_generated_at, p.download_count, p.first_downloaded_at, p.whatsapp_confirmed_at].map(esc).join(","));
+    p.generated_count, p.first_generated_at, p.download_count, p.first_downloaded_at, p.whatsapp_confirmed_at, p.merged ?? 1].map(esc).join(","));
   return "﻿" + [head.join(","), ...lines].join("\r\n");
 }

@@ -24,7 +24,7 @@ only those non-image records. In **server mode** the photograph is processed in 
 | Generated DP | Give it to the user | Server RAM → user's phone | Not stored by ECO. User can clear it from the screen. |
 | Face location (bounding box) | Centring and the one-person check | Server RAM | Discarded with the photo. **No embeddings, templates, recognition or matching.** |
 | Pseudonymous record ID | Link the user's own events | httpOnly cookie + DB | `PARTICIPANT_RECORD_RETENTION_DAYS` (default 180) after last update |
-| Category / branch / staff ID (optional) | Campaign participation metrics | DB | as above |
+| Employee/Chauffeur ID (compulsory when `REQUIRE_STAFF_ID=true`, as configured for ECO); category and branch (optional) | Recording who has made a DP; participation metrics | DB | as above |
 | Events (generated / downloaded / WhatsApp confirmed) | Metrics | DB | as above |
 | Consent and withdrawal events (record ID, notice version, language, time) | Evidence of consent | DB | `CONSENT_LOG_RETENTION_DAYS` (default 365) |
 | Privacy requests | Data principal rights | DB | Closed requests: `PRIVACY_REQUEST_RETENTION_DAYS` (default 365) |
@@ -62,6 +62,7 @@ location, device identifiers or IP addresses. IP addresses are used only in memo
 | 1 | Approve the privacy notice text, notice version and retention periods | Legal | **Open** |
 | 2 | Native-speaker and legal review of all 11 Indian-language translations (currently DRAFT, machine-quality) | Legal / HR / Comms | **Open** |
 | 3 | Appoint and publish a privacy contact / Grievance Officer (`PRIVACY_CONTACT_EMAIL`, `GRIEVANCE_OFFICER_NAME`) and define response SLAs | Legal | **Open** |
+| 4a | Compulsory staff ID: confirm the ID is necessary for the campaign purpose (data minimisation) and that recording it does not make participation non-voluntary | Legal / HR | **Open** |
 | 4 | Confirm the lawful basis: consent (as built) vs. "certain legitimate uses" for employment; confirm there is no coercion for chauffeurs engaged via vendors | Legal / HR | **Open** |
 | 5 | Record the HR / vendor-management confirmation that non-participation has no adverse consequences, and communicate it to supervisors | HR / Ops | **Open** |
 | 6 | Hosting approval: provider, India region (e.g. AWS Mumbai `ap-south-1`), DPA, backups and access policy | IT / InfoSec | **Open** |

@@ -16,6 +16,7 @@ export async function GET() {
       !s.databaseOk && "database",
     ].filter(Boolean),
     aiMode: config.aiMode,
+    requireStaffId: config.requireStaffId,
     aiProvider: config.aiProvider === "local" ? "local" : config.aiProvider,
     branches: config.branches,
     noticeVersion: config.noticeVersion,

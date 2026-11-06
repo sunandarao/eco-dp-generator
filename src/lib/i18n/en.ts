@@ -125,6 +125,11 @@ const en = {
   devKept: "Your photo stays only on your phone and is cleared when you close this page. ECO never receives your photo or your DP.",
   loadingAi: "Getting the AI ready on your phone (first time only)",
   processingDevice: "AI on your phone is removing the background and improving lighting",
+  detailsTitleReq: "About you",
+  detailsSubReq: "Please enter your Employee ID or Chauffeur ID so ECO can record that you have created your DP.",
+  staffLabelReq: "Employee ID / Chauffeur ID",
+  staffRequired: "Please enter your ID to continue.",
+  recordReq: "Your Employee ID or Chauffeur ID, that you gave consent and – if you choose to tell us – your category and branch, plus whether you generated, downloaded and updated your DP. These records are deleted automatically after the approved retention period.",
 };
 
 export default en;

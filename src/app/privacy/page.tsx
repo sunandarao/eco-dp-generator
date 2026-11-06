@@ -22,7 +22,11 @@ export default function PrivacyPage() {
           <h3 className="font-bold">2. What we collect and why</h3>
           <ul className="list-disc pl-5">
             <li><b>Your photograph</b> – only to create your ECO WhatsApp display picture. Location and other metadata are removed on your phone before upload.</li>
-            <li><b>Optional details</b> (category, branch, Employee/Chauffeur ID) – only to measure participation in the WhatsApp Professional Branding Drive. You may skip them.</li>
+            {config.requireStaffId ? (
+              <li><b>Your Employee/Chauffeur ID</b> (required) and <b>optional details</b> (category, branch) – only to record and measure participation in the WhatsApp Professional Branding Drive.</li>
+            ) : (
+              <li><b>Optional details</b> (category, branch, Employee/Chauffeur ID) – only to measure participation in the WhatsApp Professional Branding Drive. You may skip them.</li>
+            )}
             <li><b>Participation events</b> – consent given, DP generated, DP downloaded, WhatsApp update confirmed (you confirm this yourself).</li>
           </ul>
           <p>We do not collect your name, phone number, location or any biometric template. No facial recognition, identity matching or biometric identification is performed. A face <i>detector</i> is used only to find where a face is in the photo (for centring and to check that exactly one person is present).</p>
